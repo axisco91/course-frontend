@@ -1,0 +1,35 @@
+.fc-daygrid-event {
+  position: relative;
+  white-space: nowrap;
+  border-radius: 4px;
+  font-size: 0.75em;
+  padding: 2px 4px;
+}
+
+.fc-daygrid-dot-event {
+  display: flex;
+  align-items: center;
+}
+
+.fc-daygrid-dot-event .fc-event-title {
+  margin-left: 4px;
+}
+
+.fc-daygrid-more-link {
+  font-size: 0.75em;
+  cursor: pointer;
+}
+
+.fc-daygrid-day-events {
+  margin-top: 18px;
+}
+
+.fc-daygrid-event-harness {
+  margin-top: 2px;
+}
+
+.fc-event {
+  background-color: #7367f0;
+  border: 1px solid #7367f0;
+  color: #fff;
+}

@@ -2,6 +2,7 @@ import { createSlice } from '@reduxjs/toolkit'
 
 export const initialFilters = {
   course: null,
+  course_text: '',
   company: null,
   type: null,
   invoiced: null,

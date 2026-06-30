@@ -3,7 +3,7 @@ import type { ApexOptions } from 'apexcharts'
 import ReactApexChart from 'src/@core/components/react-apexcharts'
 import { useTranslation } from 'react-i18next'
 
-import { getAdvisorsWithCommissions } from 'src/api/api'
+import { getDashboardAdvisorsCommissionsTop } from 'src/api/api'
 
 const AdvisorsMetric = () => {
   const { t } = useTranslation()
@@ -19,24 +19,9 @@ const AdvisorsMetric = () => {
   useEffect(() => {
     const run = async () => {
       try {
-        const res = await getAdvisorsWithCommissions()
-        const advisors = res?.data?.data?.advisors ?? res?.data?.advisors ?? res?.data?.data ?? res?.data ?? []
-        console.log(res?.data?.data?.advisors)
-
-        const list = Array.isArray(advisors) ? advisors : []
-
-        // total por asesor
-        const top = list
-          .map((a: any) => {
-            const total = (a?.commissions ?? []).reduce((acc: number, c: any) => acc + Number(c?.amount ?? 0), 0)
-
-            return { ...a, totalCommissions: Number(total.toFixed(2)) }
-          })
-          .sort((a: any, b: any) => b.totalCommissions - a.totalCommissions)
-          .slice(0, 10)
-
-        const categories = top.map((a: any) => a?.name ?? '')
-        const data = top.map((a: any) => a.totalCommissions)
+        const res = await getDashboardAdvisorsCommissionsTop()
+        const categories: string[] = res?.data?.data?.categories ?? []
+        const data: number[] = res?.data?.data?.data ?? []
 
         setSeries([{ name: t('Total commissioned'), data }])
         setOptions(prev => ({
@@ -50,7 +35,6 @@ const AdvisorsMetric = () => {
           }
         }))
       } catch (e) {
-        // eslint-disable-next-line no-console
         console.error('Error getting advisors with commissions:', e)
       }
     }

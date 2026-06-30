@@ -1,15 +1,11 @@
-import { useEffect, useMemo, useRef, useState, useContext } from 'react'
+import { useMemo } from 'react'
 import { Dialog, DialogActions, DialogContent, DialogTitle, Button, Box, Typography, IconButton } from '@mui/material'
 import Icon from 'src/@core/components/icon'
 import dayjs from 'dayjs'
 import 'dayjs/locale/es'
 
 import { useDispatch } from 'react-redux'
-import { trainingContractActions } from 'src/reducers/trainingContracts/TrainingContractReducer' // ✅ ajusta nombre/path
-import { getActiveTrainingContractElements } from 'src/api/api'
-
-import { useErrorHandler } from 'src/hooks/useErrorHandler'
-import { AuthContext } from 'src/context/AuthContext'
+import { trainingContractActions } from 'src/reducers/trainingContracts/TrainingContractReducer'
 import { useTranslation } from 'react-i18next'
 
 dayjs.locale('es')
@@ -90,76 +86,36 @@ const CalendarChoresDialog = ({
 }) => {
   const { t } = useTranslation()
   const dispatch = useDispatch()
-  const { handleError } = useErrorHandler()
-  const { logout } = useContext(AuthContext)
-
-  const handleErrorRef = useRef(handleError)
-  const logoutRef = useRef(logout)
-  useEffect(() => void (handleErrorRef.current = handleError), [handleError])
-  useEffect(() => void (logoutRef.current = logout), [logout])
-
-  const [elements, setElements] = useState<any[]>([])
-  const [loading, setLoading] = useState(false)
-
-  useEffect(() => {
-    if (!open) return
-    if (Array.isArray(externalElements) && externalElements.length > 0) return
-
-    const load = async () => {
-      setLoading(true)
-      try {
-        let page = 1
-        let totalPages = 1
-        const all: any[] = []
-
-        while (page <= totalPages) {
-          const res = await getActiveTrainingContractElements({ page, perPage: 500 })
-          const list = res.data?.elements ?? res.data?.data?.elements ?? res.data?.data?.data ?? res.data?.data ?? []
-          if (Array.isArray(list)) all.push(...list)
-
-          const meta = res?.data?.data?.meta ?? res?.data?.meta
-          if (!meta) break
-
-          const current = Number(meta?.current_page ?? page)
-          const last = Number(meta?.last_page ?? current)
-          totalPages = Number.isFinite(last) && last > 0 ? last : current
-          if (current >= totalPages) break
-          page = current + 1
-        }
-
-        setElements(all)
-      } catch (e) {
-        handleErrorRef.current(e, logoutRef.current)
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    load()
-  }, [open, externalElements])
 
   const day = selectedDate ? ymd(selectedDate) : ''
-  const sourceElements = Array.isArray(externalElements) && externalElements.length > 0 ? externalElements : elements
 
   const choresForDay = useMemo(() => {
     if (!day) return []
-    const list = Array.isArray(sourceElements) ? sourceElements : []
-    if (list.length === 0) {
-      const eventList = Array.isArray(events) ? events : []
+    const sourceElements = Array.isArray(externalElements) ? externalElements : []
+    if (sourceElements.length > 0) {
+      return sourceElements.filter((item: any) => {
+        const start = getTrainingElementStart(item)
+        const end = getTrainingElementEnd(item)
 
-      return eventList
-        .filter((ev: any) => ev?.type === 'trainingContract' && ymd(ev?.start) === day)
-        .map((ev: any) => ev?.meta?.raw)
-        .filter(Boolean)
+        return start === day || end === day
+      })
     }
 
-    return list.filter((it: any) => {
-      const start = getTrainingElementStart(it)
-      const end = getTrainingElementEnd(it)
+    return (Array.isArray(events) ? events : [])
+      .filter((ev: any) => ['trainingContract', 'mainContract'].includes(ev?.type) && ymd(ev?.start) === day)
+      .map((ev: any) => ev?.meta?.raw)
+      .filter(Boolean)
+      .reduce((acc: any[], item: any) => {
+        const id = Number(item?.id ?? item?.training_contract_id ?? item?.training_contract?.id)
+        if (!Number.isFinite(id)) return acc
+        if (acc.some(existing => Number(existing?.id ?? existing?.training_contract_id ?? existing?.training_contract?.id) === id)) {
+          return acc
+        }
+        acc.push(item)
 
-      return start === day || end === day
-    })
-  }, [sourceElements, events, day])
+        return acc
+      }, [])
+  }, [day, events, externalElements])
 
   const handleEye = (item: any) => {
     const id = item?.training_contract_id ?? item?.training_contract?.id ?? item?.id
@@ -176,11 +132,7 @@ const CalendarChoresDialog = ({
       </DialogTitle>
 
       <DialogContent>
-        {loading ? (
-          <Box sx={{ py: 4 }}>
-            <Typography>{t('Loading...')}</Typography>
-          </Box>
-        ) : choresForDay.length === 0 ? (
+        {choresForDay.length === 0 ? (
           <Box sx={{ py: 4 }}>
             <Typography>{t('No chores for this day.')}</Typography>
           </Box>
@@ -206,10 +158,7 @@ const CalendarChoresDialog = ({
                   sx={{
                     p: 2,
                     borderRadius: 1,
-                    border: theme =>
-                      `1px solid ${
-                        registeredCourse || isDone ? '#c5e4e4' : theme.palette.divider
-                      }`,
+                    border: theme => `1px solid ${registeredCourse || isDone ? '#c5e4e4' : theme.palette.divider}`,
                     backgroundColor: registeredCourse || isDone ? '#edf8f7' : 'background.paper',
                     display: 'flex',
                     justifyContent: 'space-between',
@@ -240,11 +189,11 @@ const CalendarChoresDialog = ({
                     ) : null}
                   </Box>
 
-                <Box>
+                  <Box>
                     <IconButton onClick={() => handleEye(item)} title={t('View contract')}>
                       <Icon icon='tabler:eye' fontSize={20} />
                     </IconButton>
-                </Box>
+                  </Box>
                 </Box>
               )
             })}

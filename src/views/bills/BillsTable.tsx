@@ -31,6 +31,19 @@ import { billActions } from 'src/reducers/bills/BillReducer'
 
 type SortType = 'asc' | 'desc' | undefined | null
 
+const buildBillRequestFilters = (filters: any) => {
+  const { course, course_text, ...rest } = filters ?? {}
+  const nextFilters = { ...rest }
+
+  if (course != null && course !== '') {
+    nextFilters.course = course
+  } else if (typeof course_text === 'string' && course_text.trim() !== '') {
+    nextFilters.course = course_text.trim()
+  }
+
+  return nextFilters
+}
+
 const yesNoChip = (value: any, t: any) => {
   const v = String(value ?? '0')
   const isYes = v === '1' || v === 'true' || v === 'YES' || v === 'SI' || v === 'Sí'
@@ -267,12 +280,13 @@ const BillsTable = () => {
     try {
       const current = paginationModel.page + 1
       const sortTable = (sort ?? 'asc') === 'asc' ? sortColumn : `-${sortColumn}`
+      const requestFilters = buildBillRequestFilters(appliedFilters)
 
       const res = await getBills({
         perPage: paginationModel.pageSize,
         page: current,
         sort: sortTable,
-        ...appliedFilters
+        ...requestFilters
       })
 
       setTotal(res.data?.data?.meta?.total ?? 0)

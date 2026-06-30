@@ -20,6 +20,21 @@ import { AuthContext } from 'src/context/AuthContext'
 type Option = { id: number; name: string }
 type YearOption = { id: number; name: string }
 
+const getCourseOptionLabel = (option: any) => option?.name ?? option?.label ?? ''
+
+const buildBillRequestFilters = (filters: any) => {
+  const { course, course_text, ...rest } = filters ?? {}
+  const nextFilters = { ...rest }
+
+  if (course != null && course !== '') {
+    nextFilters.course = course
+  } else if (typeof course_text === 'string' && course_text.trim() !== '') {
+    nextFilters.course = course_text.trim()
+  }
+
+  return nextFilters
+}
+
 const BillsFilters = () => {
   const { t } = useTranslation()
   const dispatch = useDispatch()
@@ -29,6 +44,7 @@ const BillsFilters = () => {
 
   // ✅ draft + applied
   const filters = useSelector((state: RootState) => (state as any).bill.filters)
+  const appliedFilters = useSelector((state: RootState) => (state as any).bill.appliedFilters)
 
   // ✅ listas desde reducers
   const courses = useSelector((state: RootState) => (state as any).course.courses ?? []) as Option[]
@@ -129,7 +145,7 @@ const BillsFilters = () => {
   const obtainExcel = async () => {
     setLoading(true)
     try {
-      const res = await getBillsExportExcel(filters)
+      const res = await getBillsExportExcel(buildBillRequestFilters(appliedFilters))
 
       const blob = new Blob([res.data], {
         type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
@@ -205,14 +221,32 @@ const BillsFilters = () => {
         {/* Curso */}
         <Grid item xs={12} md={4}>
           <Autocomplete
+            freeSolo
             options={courses}
             value={selectedCourse}
-            onChange={(_, v) => setFilter('course', v ? v.id : null)}
-            getOptionLabel={(o: any) => o?.name ?? o?.label ?? ''}
+            inputValue={filters.course_text ?? ''}
+            onChange={(_, v) => {
+              const nextCourse = typeof v === 'object' && v ? v.id : null
+              const nextText = typeof v === 'string' ? v : getCourseOptionLabel(v)
+              setFilter('course', nextCourse)
+              setFilter('course_text', nextText)
+            }}
+            onInputChange={(_, value, reason) => {
+              setFilter('course_text', value)
+
+              if (!selectedCourse) return
+
+              const selectedLabel = getCourseOptionLabel(selectedCourse)
+
+              if (reason === 'clear' || value !== selectedLabel) {
+                setFilter('course', null)
+              }
+            }}
+            getOptionLabel={getCourseOptionLabel}
             isOptionEqualToValue={(o: any, v: any) => Number(o?.id) === Number(v?.id)}
             renderOption={(props, option) => (
               <li {...props} key={option.id}>
-                {option.name ?? option.label}
+                {getCourseOptionLabel(option)}
               </li>
             )}
             renderInput={params => <CustomTextField {...params} label={t('Course')} placeholder={t('Select...')} />}

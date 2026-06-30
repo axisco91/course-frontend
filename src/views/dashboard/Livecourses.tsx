@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import ReactApexChart from 'src/@core/components/react-apexcharts'
 import type { ApexOptions } from 'apexcharts'
-import { getCourses } from 'src/api/api'
+import { getDashboardLiveCourses } from 'src/api/api'
 
 const LiveCourses = () => {
   const [loading, setLoading] = useState(true)
@@ -12,27 +12,13 @@ const LiveCourses = () => {
     const run = async () => {
       setLoading(true)
       try {
-        const res = await getCourses()
-        const courses = res?.data?.data?.courses ?? res?.data?.courses ?? res?.data?.data ?? res?.data ?? []
-        const list = Array.isArray(courses) ? courses : []
+        const res = await getDashboardLiveCourses()
+        const labels: string[] = res?.data?.data?.labels ?? []
+        const data: number[] = res?.data?.data?.data ?? []
 
-        const currentYear = new Date().getFullYear()
-        const lastYear = currentYear - 1
-
-        const getYear = (c: any) => {
-          if (!c?.beginning) return null
-          const d = new Date(c.beginning)
-
-          return isNaN(d.getTime()) ? null : d.getFullYear()
-        }
-
-        const current = list.filter(c => getYear(c) === currentYear).length
-        const last = list.filter(c => getYear(c) === lastYear).length
-
-        setSeries([current, last])
-
+        setSeries(data)
         setOptions({
-          labels: [String(currentYear), String(lastYear)],
+          labels,
           chart: { type: 'donut' },
           legend: { show: true },
           dataLabels: { enabled: true },
@@ -53,7 +39,6 @@ const LiveCourses = () => {
           }
         })
       } catch (e) {
-        // eslint-disable-next-line no-console
         console.error('Error fetching courses:', e)
       } finally {
         setLoading(false)

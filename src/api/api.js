@@ -7,6 +7,13 @@ const getAuthToken = () =>
 const getBaseURL = () => {
   if (typeof window === 'undefined') return ''
 
+  const envBackendUrl = process.env.NEXT_PUBLIC_BACKEND_URL?.trim()
+  if (envBackendUrl) {
+    const normalizedBackendUrl = envBackendUrl.replace(/\/$/, '')
+
+    return /\/api$/i.test(normalizedBackendUrl) ? normalizedBackendUrl : `${normalizedBackendUrl}/api`
+  }
+
   const host = window.location.hostname
 
   if (host === 'localhost') {
@@ -34,7 +41,18 @@ export const authInstance = axios.create({
   }
 })
 
+const attachDynamicBaseUrl = client => {
+  client.interceptors.request.use(config => {
+    config.baseURL = getBaseURL()
+
+    return config
+  })
+}
+
+attachDynamicBaseUrl(instance)
+
 authInstance.interceptors.request.use(config => {
+  config.baseURL = getBaseURL()
   const token = getAuthToken()
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
@@ -53,6 +71,7 @@ export const authInstanceWithFile = axios.create({
 })
 
 authInstanceWithFile.interceptors.request.use(config => {
+  config.baseURL = getBaseURL()
   const token = getAuthToken()
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
@@ -72,6 +91,7 @@ export const authInstanceExport = axios.create({
 })
 
 authInstanceExport.interceptors.request.use(config => {
+  config.baseURL = getBaseURL()
   const token = getAuthToken()
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
@@ -721,6 +741,19 @@ export const getDocumentStudentBill = (viewName, trainingContract, data) =>
   authInstanceWithFile.get(`/document-students/test-pdf-factura/${viewName}/${trainingContract}`, { params: data })
 export const getDocumentStudent = (viewName, trainingContract, data) =>
   authInstanceExport.get(`/document-students/test-pdf/${viewName}/${trainingContract}`, { params: data })
+
+export const getDashboardCoursesMetric = data => authInstance.get('/dashboard/courses-metric', { params: data })
+export const getDashboardRegistrationsMetric = data => authInstance.get('/dashboard/registrations-metric', { params: data })
+export const getDashboardLiveTrainingContracts = data =>
+  authInstance.get('/dashboard/live-training-contracts', { params: data })
+export const getDashboardLiveCourses = data => authInstance.get('/dashboard/live-courses', { params: data })
+export const getDashboardAdvisorsCommissionsTop = data =>
+  authInstance.get('/dashboard/advisors-commissions-top', { params: data })
+export const getDashboardUsersCommissionsTop = data =>
+  authInstance.get('/dashboard/users-commissions-top', { params: data })
+export const getDashboardCalendarEvents = data => authInstance.get('/dashboard/calendar-events', { params: data })
+export const getDashboardTracingNotifications = data =>
+  authInstance.get('/dashboard/tracing-notifications', { params: data })
 
 export const getCalendarTracings = data => authInstance.get('calendar', { params: data })
 

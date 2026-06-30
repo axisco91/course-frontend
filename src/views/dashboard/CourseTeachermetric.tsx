@@ -1,4 +1,3 @@
-// src/views/dashboard/CoursesTeacherMetric.tsx
 import { useEffect, useMemo, useState } from 'react'
 import { Card, CardContent, CardHeader, Typography } from '@mui/material'
 import { useSelector } from 'react-redux'
@@ -8,19 +7,7 @@ import ReactApexChart from 'src/@core/components/react-apexcharts'
 import type { ApexOptions } from 'apexcharts'
 import { useTranslation } from 'react-i18next'
 
-import { getCourses } from 'src/api/api'
-
-type CourseRow = {
-  beginning?: string
-}
-
-const getYear = (date?: string) => {
-  if (!date) return null
-  const d = new Date(date)
-  const y = d.getUTCFullYear()
-
-  return Number.isFinite(y) ? y : null
-}
+import { getDashboardLiveCourses } from 'src/api/api'
 
 const CoursesTeacherMetric = () => {
   const { t } = useTranslation()
@@ -38,21 +25,15 @@ const CoursesTeacherMetric = () => {
 
     const fetchCourses = async () => {
       try {
-        const res = await getCourses()
-        const courses: CourseRow[] = res?.data?.data?.courses ?? res?.data?.data ?? res?.data ?? []
+        const res = await getDashboardLiveCourses()
+        const labels: string[] = res?.data?.data?.labels ?? []
+        const data: number[] = res?.data?.data?.data ?? []
 
         if (cancelled) return
 
-        const currentYear = new Date().getFullYear()
-        const lastYear = currentYear - 1
-
-        const currentYearCourses = (courses ?? []).filter(c => getYear(c.beginning) === currentYear).length
-        const lastYearCourses = (courses ?? []).filter(c => getYear(c.beginning) === lastYear).length
-
-        setSeries([currentYearCourses, lastYearCourses])
-
+        setSeries(data)
         setOptions({
-          labels: [`${currentYear}`, `${lastYear}`],
+          labels,
           chart: { type: 'donut' },
           legend: { show: true, position: 'bottom' },
           dataLabels: { enabled: true },
@@ -71,12 +52,9 @@ const CoursesTeacherMetric = () => {
               }
             }
           },
-
-          // Colores como en tu antiguo
           colors: ['#46b9b0', '#f8b786']
         })
       } catch (e) {
-        // eslint-disable-next-line no-console
         console.error('Error obteniendo cursos:', e)
         setSeries([])
         setOptions({})

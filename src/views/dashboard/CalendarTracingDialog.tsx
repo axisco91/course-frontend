@@ -1,14 +1,12 @@
-import { useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo } from 'react'
 import { Dialog, DialogActions, DialogContent, DialogTitle, Button, Box, Typography, IconButton } from '@mui/material'
 import Icon from 'src/@core/components/icon'
 import dayjs from 'dayjs'
 import 'dayjs/locale/es'
 import { useDispatch } from 'react-redux'
 import { tracingActions } from 'src/reducers/tracings/TracingReducer'
+import { trainingContractActions } from 'src/reducers/trainingContracts/TrainingContractReducer'
 import { useTranslation } from 'react-i18next'
-import { getTracings } from 'src/api/api'
-import { useErrorHandler } from 'src/hooks/useErrorHandler'
-import { AuthContext } from 'src/context/AuthContext'
 
 dayjs.locale('es')
 
@@ -35,6 +33,7 @@ const ymd = (d?: any) => {
 
   return ''
 }
+
 const firstValidYmd = (...values: any[]) => {
   for (const v of values) {
     if (v === null || v === undefined) continue
@@ -53,7 +52,6 @@ const getTracingDateByKey = (t: any, key: 'welcome' | 'quarter' | 'half' | 'thre
     t?.[`${key}_date_base`],
     t?.course?.[`${key}_date`],
     t?.course?.[`${key}_date_base`],
-    // Usar *_sent solo como último recurso: para calendario manda la fecha real del hito.
     t?.[`${key}_date_sent`],
     t?.course?.[`${key}_date_sent`],
     key === 'welcome' ? t?.follow_up_date : undefined,
@@ -62,21 +60,67 @@ const getTracingDateByKey = (t: any, key: 'welcome' | 'quarter' | 'half' | 'thre
 
 const tracingDates = (t: any) =>
   [
-    getTracingDateByKey(t, 'welcome'),
+    firstValidYmd(t?.course_beginning, t?.course?.beginning, t?.follow_up_date, t?.created_at),
     getTracingDateByKey(t, 'quarter'),
     getTracingDateByKey(t, 'half'),
     getTracingDateByKey(t, 'three_quarters'),
-    getTracingDateByKey(t, 'final'),
-    firstValidYmd(t?.follow_up_date, t?.course?.beginning, t?.created_at)
+    firstValidYmd(t?.course_end, t?.course?.end, getTracingDateByKey(t, 'final'))
   ].filter(Boolean)
-const pickArray = (...candidates: any[]) => {
-  for (const c of candidates) {
-    if (Array.isArray(c)) return c
-    if (Array.isArray(c?.data)) return c.data
-    if (Array.isArray(c?.rows)) return c.rows
+
+const getEntryOrder = (entry: any) => {
+  const dateKind = String(entry?.dateKind ?? '').toLowerCase()
+  const title = String(entry?.title ?? '').toLowerCase()
+
+  if (dateKind === 'start' || title.includes('inicio curso') || title.endsWith(' - inicio') || title.includes(' - inicio contrato')) {
+    return 0
   }
 
-  return []
+  if (dateKind === 'quarter' || title.includes('25%')) return 1
+  if (dateKind === 'half' || title.includes('50%')) return 2
+  if (dateKind === 'three_quarters' || title.includes('75%')) return 3
+
+  if (dateKind === 'end' || title.includes('fin curso') || title.endsWith(' - fin') || title.includes(' - fin contrato')) {
+    return 4
+  }
+
+  return 5
+}
+
+const compareEntries = (a: any, b: any) => {
+  const orderDiff = getEntryOrder(a) - getEntryOrder(b)
+  if (orderDiff !== 0) return orderDiff
+
+  return String(a?.studentName ?? '').localeCompare(String(b?.studentName ?? ''), 'es', { sensitivity: 'base' })
+}
+
+const normalizeKeyPart = (value: any) => String(value ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim()
+
+const getEntrySourcePriority = (entry: any) => {
+  if (entry?.kind === 'tracing') return 0
+  if (entry?.kind === 'mainContract') return 1
+  if (entry?.kind === 'trainingContract') return 2
+
+  return 3
+}
+
+const dedupeEntries = (entries: any[]) => {
+  const bestByKey = new Map<string, any>()
+
+  for (const entry of entries) {
+    const key = [
+      getEntryOrder(entry),
+      normalizeKeyPart(entry?.studentName),
+      normalizeKeyPart(entry?.courseLabel),
+      normalizeKeyPart(entry?.companyLabel)
+    ].join('|')
+
+    const existing = bestByKey.get(key)
+    if (!existing || getEntrySourcePriority(entry) < getEntrySourcePriority(existing)) {
+      bestByKey.set(key, entry)
+    }
+  }
+
+  return Array.from(bestByKey.values())
 }
 
 const CalendarTracingDialog = ({
@@ -94,79 +138,112 @@ const CalendarTracingDialog = ({
 }) => {
   const { t } = useTranslation()
   const dispatch = useDispatch()
-  const { handleError } = useErrorHandler()
-  const { logout } = useContext(AuthContext)
-
-  const handleErrorRef = useRef(handleError)
-  const logoutRef = useRef(logout)
-  useEffect(() => void (handleErrorRef.current = handleError), [handleError])
-  useEffect(() => void (logoutRef.current = logout), [logout])
-
-  const [loading, setLoading] = useState(false)
-  const [tracingsList, setTracingsList] = useState<any[]>([])
-
-  useEffect(() => {
-    if (!open) return
-
-    let cancelled = false
-
-    const fetchAllTracings = async () => {
-      setLoading(true)
-      try {
-        let page = 1
-        let totalPages = 1
-        const all: any[] = []
-
-        while (page <= totalPages) {
-          const res = await getTracings({ page, perPage: 500 })
-          const rows = pickArray(
-            res?.data?.data?.tracings,
-            res?.data?.tracings,
-            res?.data?.data?.data,
-            res?.data?.data,
-            res?.data,
-            res?.data?.data?.items,
-            res?.data?.items
-          )
-          if (Array.isArray(rows)) all.push(...rows)
-
-          const meta = res?.data?.data?.meta ?? res?.data?.meta
-          if (!meta) break
-
-          const current = Number(meta?.current_page ?? page)
-          const last = Number(meta?.last_page ?? current)
-          totalPages = Number.isFinite(last) && last > 0 ? last : current
-          if (current >= totalPages) break
-          page = current + 1
-        }
-
-        if (!cancelled) setTracingsList(all)
-      } catch (e) {
-        if (!cancelled) handleErrorRef.current(e, logoutRef.current)
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    }
-
-    fetchAllTracings()
-
-    return () => {
-      cancelled = true
-    }
-  }, [open])
-
   const day = selectedDate ? ymd(selectedDate) : ''
 
-  const tracingsForDay = useMemo(() => {
+  const entriesForDay = useMemo(() => {
     if (!day) return []
-    const source = Array.isArray(tracings) && tracings.length > 0 ? tracings : tracingsList
-    return source
-      .filter(t => Number(t?.course_status_id ?? t?.course?.course_status_id) !== 4)
-      .filter(t => tracingDates(t).includes(day))
-  }, [tracings, tracingsList, day])
 
-  const handleEye = (tracing: any) => {
-    const tracingId = Number(tracing?.id ?? tracing?.value)
+    if (Array.isArray(events) && events.length > 0) {
+      return dedupeEntries(
+        events
+        .filter((event: any) => ymd(event?.start) === day)
+        .filter((event: any) => ['tracing', 'mainContract', 'trainingContract'].includes(event?.type))
+        .map((event: any, index: number) => {
+          const tracing = event?.meta?.tracing
+          if (tracing) {
+            return {
+              key: `tracing-${tracing?.id ?? index}-${event?.meta?.dateKind ?? event?.title ?? index}`,
+              kind: 'tracing',
+              title: event?.title ?? '',
+              dateKind: event?.meta?.dateKind ?? '',
+              studentName: `${tracing?.student_name ?? tracing?.student?.name ?? ''} ${
+                tracing?.student_surname ?? tracing?.student?.surname ?? ''
+              }`.trim(),
+              courseLabel:
+                typeof tracing?.course === 'string' ? tracing.course : tracing?.course?.name ?? tracing?.course_name ?? '',
+              companyLabel:
+                typeof tracing?.company === 'string'
+                  ? tracing.company
+                  : tracing?.company?.name ?? tracing?.company_name ?? '',
+              typeLabel:
+                tracing?.course_type ??
+                tracing?.course_type_name ??
+                tracing?.course?.course_type?.name ??
+                tracing?.course?.type?.name ??
+                '',
+              tracingId: Number(tracing?.id ?? tracing?.value)
+            }
+          }
+
+          const raw = event?.meta?.raw
+          const trainingContractId = Number(
+            event?.meta?.training_contract_id ?? raw?.training_contract_id ?? raw?.training_contract?.id ?? NaN
+          )
+          const studentName =
+            raw?.student != null
+              ? `${raw.student.name ?? ''} ${raw.student.surname ?? ''}`.trim()
+              : raw?.training_contract?.student != null
+              ? `${raw.training_contract.student.name ?? ''} ${raw.training_contract.student.surname ?? ''}`.trim()
+              : String(event?.title ?? '').split('-')[0].trim()
+
+          return {
+            key: `contract-${trainingContractId}-${event?.title ?? index}-${index}`,
+            kind: event?.type === 'mainContract' ? 'mainContract' : 'trainingContract',
+            title: event?.title ?? '',
+            dateKind: '',
+            studentName,
+            courseLabel: raw?.course_name ?? '',
+            companyLabel: raw?.company_name ?? '',
+            typeLabel: raw?.type_label ?? '',
+            trainingContractId
+          }
+        })
+        .filter(Boolean)
+        .sort(compareEntries)
+      )
+    }
+
+    const source = Array.isArray(tracings) ? tracings : []
+    const unique = source.reduce((acc: any[], item: any) => {
+      const id = Number(item?.id ?? item?.value)
+      if (!Number.isFinite(id)) return acc
+      if (acc.some(existing => Number(existing?.tracingId) === id)) return acc
+
+      acc.push({
+        key: `tracing-${id}`,
+        kind: 'tracing',
+        title: '',
+        studentName: `${item?.student_name ?? item?.student?.name ?? ''} ${item?.student_surname ?? item?.student?.surname ?? ''}`.trim(),
+        courseLabel: typeof item?.course === 'string' ? item.course : item?.course?.name ?? item?.course_name ?? '',
+        companyLabel: typeof item?.company === 'string' ? item.company : item?.company?.name ?? item?.company_name ?? '',
+        typeLabel:
+          item?.course_type ?? item?.course_type_name ?? item?.course?.course_type?.name ?? item?.course?.type?.name ?? '',
+        tracingId: id,
+        tracing: item
+      })
+
+      return acc
+    }, [])
+
+    return unique.filter((entry: any) => {
+        const tracing = entry?.tracing
+
+        return tracing && Number(tracing?.course_status_id ?? tracing?.course?.course_status_id) !== 4 && tracingDates(tracing).includes(day)
+      }).sort(compareEntries)
+  }, [tracings, events, day])
+
+  const handleEye = (entry: any) => {
+    if (entry?.kind === 'mainContract' || entry?.kind === 'trainingContract') {
+      const trainingContractId = Number(entry?.trainingContractId)
+      if (!Number.isFinite(trainingContractId)) return
+
+      dispatch(trainingContractActions.setId(trainingContractId))
+      dispatch(trainingContractActions.openModal({ mode: 'view' }))
+
+      return
+    }
+
+    const tracingId = Number(entry?.tracingId)
     if (!Number.isFinite(tracingId)) return
 
     dispatch(tracingActions.setId(tracingId))
@@ -180,34 +257,16 @@ const CalendarTracingDialog = ({
       </DialogTitle>
 
       <DialogContent>
-        {loading ? (
-          <Box sx={{ py: 4 }}>
-            <Typography>{t('Loading...')}</Typography>
-          </Box>
-        ) : tracingsForDay.length === 0 ? (
+        {entriesForDay.length === 0 ? (
           <Box sx={{ py: 4 }}>
             <Typography>{t('No tracings for this day.')}</Typography>
           </Box>
         ) : (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, py: 2 }}>
-            {tracingsForDay.map((tracing: any, index: number) => {
-              const studentName = `${tracing?.student_name ?? tracing?.student?.name ?? ''} ${
-                tracing?.student_surname ?? tracing?.student?.surname ?? ''
-              }`.trim()
-              const courseLabel =
-                typeof tracing?.course === 'string' ? tracing.course : tracing?.course?.name ?? tracing?.course_name ?? ''
-              const companyLabel =
-                typeof tracing?.company === 'string' ? tracing.company : tracing?.company?.name ?? tracing?.company_name ?? ''
-              const typeLabel =
-                tracing?.course_type ??
-                tracing?.course_type_name ??
-                tracing?.course?.course_type?.name ??
-                tracing?.course?.type?.name ??
-                ''
-
+            {entriesForDay.map((entry: any) => {
               return (
                 <Box
-                  key={`${tracing?.id ?? tracing?.value ?? index}-${index}`}
+                  key={entry.key}
                   sx={{
                     p: 2,
                     borderRadius: 1,
@@ -219,20 +278,27 @@ const CalendarTracingDialog = ({
                   }}
                 >
                   <Box>
-                    <Typography fontWeight={800}>{studentName}</Typography>
-                    <Typography variant='body2'>
-                      {`${t('Course')}:`} {courseLabel}
-                    </Typography>
-                    <Typography variant='body2'>
-                      {`${t('Company')}:`} {companyLabel}
-                    </Typography>
-                    <Typography variant='body2'>
-                      {`${t('Type')}:`} {typeLabel}
-                    </Typography>
+                    <Typography fontWeight={800}>{entry.studentName}</Typography>
+                    {entry.title ? <Typography variant='body2'>{entry.title}</Typography> : null}
+                    {entry.courseLabel ? (
+                      <Typography variant='body2'>
+                        {`${t('Course')}:`} {entry.courseLabel}
+                      </Typography>
+                    ) : null}
+                    {entry.companyLabel ? (
+                      <Typography variant='body2'>
+                        {`${t('Company')}:`} {entry.companyLabel}
+                      </Typography>
+                    ) : null}
+                    {entry.typeLabel ? (
+                      <Typography variant='body2'>
+                        {`${t('Type')}:`} {entry.typeLabel}
+                      </Typography>
+                    ) : null}
                   </Box>
 
                   <Box>
-                    <IconButton onClick={() => handleEye(tracing)} title={t('View')}>
+                    <IconButton onClick={() => handleEye(entry)} title={t('View')}>
                       <Icon icon='tabler:eye' fontSize={20} />
                     </IconButton>
                   </Box>

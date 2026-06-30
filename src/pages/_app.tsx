@@ -178,6 +178,84 @@ const App = (props: ExtendedAppProps) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  async function loadLayoutCatalogs() {
+    const results = await Promise.allSettled([
+      getProvinces(),
+      getProfessionalCategories(),
+      getLevelStudies(),
+      getCompanyTypes(),
+      getCompanyActivities(),
+      getCnaes(),
+      getQuoteGroups(),
+      getCourseTypes(),
+      getCourseStatuses(),
+      getIncidenceTypes(),
+      getActionTypes(),
+      getTrainingActionLevels(),
+      getTrainingActionGroups(),
+      getTutorings(),
+      getOccupations(),
+      getOnLeaveTypes(),
+      getPayments(),
+      getExcludedDayTypes(),
+      getCompanySettings()
+    ])
+
+    const dispatchIfFulfilled = (result: PromiseSettledResult<any>, action: (value: any) => void) => {
+      if (result.status === 'fulfilled') {
+        action(result.value)
+      }
+    }
+
+    dispatchIfFulfilled(results[0], response => store.dispatch(provinceActions.setProvinces(response.data.data.provinces)))
+    dispatchIfFulfilled(results[1], response =>
+      store.dispatch(
+        professionalCategoryActions.setProfessionalCategories(response.data.data.professional_categories)
+      )
+    )
+    dispatchIfFulfilled(results[2], response =>
+      store.dispatch(levelStudyActions.setLevelStudies(response.data.data.level_studies))
+    )
+    dispatchIfFulfilled(results[3], response => store.dispatch(companyTypeActions.setCompanyTypes(response.data.data.company_types)))
+    dispatchIfFulfilled(results[4], response =>
+      store.dispatch(companyActivityActions.setCompanyActivities(response.data.data.company_activities))
+    )
+    dispatchIfFulfilled(results[5], response => store.dispatch(cnaeActions.setCnaes(response.data.data.cnaes)))
+    dispatchIfFulfilled(results[6], response =>
+      store.dispatch(quoteGroupActions.setQuoteGroups(response.data.data.quote_groups))
+    )
+    dispatchIfFulfilled(results[7], response =>
+      store.dispatch(courseTypeActions.setCourseTypes(response.data.data.course_types))
+    )
+    dispatchIfFulfilled(results[8], response =>
+      store.dispatch(courseStatusActions.setCourseStatuses(response.data.data.course_statuses))
+    )
+    dispatchIfFulfilled(results[9], response =>
+      store.dispatch(incidenceTypeActions.setIncidenceTypes(response.data.data.incidence_types))
+    )
+    dispatchIfFulfilled(results[10], response =>
+      store.dispatch(actionTypeActions.setActionTypes(response.data.data.action_types))
+    )
+    dispatchIfFulfilled(results[11], response =>
+      store.dispatch(trainingActionLevelActions.setTrainingActionLevels(response.data.data.training_action_levels))
+    )
+    dispatchIfFulfilled(results[12], response =>
+      store.dispatch(trainingActionGroupActions.setTrainingActionGroups(response.data.data.training_action_groups))
+    )
+    dispatchIfFulfilled(results[13], response => store.dispatch(tutoringActions.setTutorings(response.data.data.tutorings)))
+    dispatchIfFulfilled(results[14], response =>
+      store.dispatch(occupationActions.setOccupations(response.data.data.occupations))
+    )
+    dispatchIfFulfilled(results[15], response => store.dispatch(onLeaveActions.setOnLeaves(response.data.data.on_leave_types)))
+    dispatchIfFulfilled(results[16], response => store.dispatch(paymentActions.setPayments(response.data.data.payments)))
+    dispatchIfFulfilled(results[17], response =>
+      store.dispatch(excludedDayTypeActions.setExcludedDayTypes(response.data.data.excluded_day_types))
+    )
+    dispatchIfFulfilled(results[18], response =>
+      store.dispatch(companySettingActions.setCompanySettings(response.data.data.company_settings))
+    )
+  }
+
   async function fetchData() {
     try {
       const hostname = new URL(window.location.href).hostname
@@ -247,77 +325,9 @@ const App = (props: ExtendedAppProps) => {
         return
       }
 
-      // Obtenemos datos del layout de la empresa
-      const [
-        resProvince,
-        resProfessionalCategories,
-        resLevelStudies,
-        resCompanyType,
-        resCompanyActivities,
-        resCnaes,
-        resQuoteGroups,
-        resCourseTypes,
-        resCourseStatuses,
-        resIncidenceTypes,
-        resActionTypes,
-        resTrainingActionLevels,
-        resTrainingActionGroups,
-        resTutorings,
-        resOccupations,
-        resOnLeaveTypes,
-        resPayments,
-        resExcludedDayTypes,
-        resCompanySettings
-      ] = await Promise.all([
-        getProvinces(),
-        getProfessionalCategories(),
-        getLevelStudies(),
-        getCompanyTypes(),
-        getCompanyActivities(),
-        getCnaes(),
-        getQuoteGroups(),
-        getCourseTypes(),
-        getCourseStatuses(),
-        getIncidenceTypes(),
-        getActionTypes(),
-        getTrainingActionLevels(),
-        getTrainingActionGroups(),
-        getTutorings(),
-        getOccupations(),
-        getOnLeaveTypes(),
-        getPayments(),
-        getExcludedDayTypes(),
-        getCompanySettings()
-      ])
-
-      store.dispatch(provinceActions.setProvinces(resProvince.data.data.provinces))
-      store.dispatch(
-        professionalCategoryActions.setProfessionalCategories(
-          resProfessionalCategories.data.data.professional_categories
-        )
-      )
-      store.dispatch(levelStudyActions.setLevelStudies(resLevelStudies.data.data.level_studies))
-
-      store.dispatch(companyTypeActions.setCompanyTypes(resCompanyType.data.data.company_types))
-      store.dispatch(companyActivityActions.setCompanyActivities(resCompanyActivities.data.data.company_activities))
-      store.dispatch(cnaeActions.setCnaes(resCnaes.data.data.cnaes))
-      store.dispatch(quoteGroupActions.setQuoteGroups(resQuoteGroups.data.data.quote_groups))
-      store.dispatch(courseTypeActions.setCourseTypes(resCourseTypes.data.data.course_types))
-      store.dispatch(courseStatusActions.setCourseStatuses(resCourseStatuses.data.data.course_statuses))
-      store.dispatch(incidenceTypeActions.setIncidenceTypes(resIncidenceTypes.data.data.incidence_types))
-      store.dispatch(actionTypeActions.setActionTypes(resActionTypes.data.data.action_types))
-      store.dispatch(
-        trainingActionLevelActions.setTrainingActionLevels(resTrainingActionLevels.data.data.training_action_levels)
-      )
-      store.dispatch(
-        trainingActionGroupActions.setTrainingActionGroups(resTrainingActionGroups.data.data.training_action_groups)
-      )
-      store.dispatch(tutoringActions.setTutorings(resTutorings.data.data.tutorings))
-      store.dispatch(occupationActions.setOccupations(resOccupations.data.data.occupations))
-      store.dispatch(onLeaveActions.setOnLeaves(resOnLeaveTypes.data.data.on_leave_types))
-      store.dispatch(paymentActions.setPayments(resPayments.data.data.payments))
-      store.dispatch(excludedDayTypeActions.setExcludedDayTypes(resExcludedDayTypes.data.data.excluded_day_types))
-      store.dispatch(companySettingActions.setCompanySettings(resCompanySettings.data.data.company_settings))
+      void loadLayoutCatalogs().catch(error => {
+        console.error('Error loading layout catalogs', error)
+      })
     } catch (error) {
       console.log(error)
 

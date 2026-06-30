@@ -1,7 +1,7 @@
 import { MouseEvent, useEffect, useMemo, useState } from 'react'
 import { Badge, Box, Button, IconButton, List, ListItemButton, ListItemText, Menu, Typography } from '@mui/material'
 import Icon from 'src/@core/components/icon'
-import { getTracings } from 'src/api/api'
+import { getDashboardTracingNotifications } from 'src/api/api'
 import { useDispatch } from 'react-redux'
 import { tracingActions } from 'src/reducers/tracings/TracingReducer'
 import { useRouter } from 'next/router'
@@ -42,25 +42,6 @@ const toDisplayDate = (value?: string) => {
   return ''
 }
 
-const pickArray = (...candidates: any[]) => {
-  for (const c of candidates) {
-    if (Array.isArray(c)) return c
-    if (Array.isArray(c?.data)) return c.data
-    if (Array.isArray(c?.rows)) return c.rows
-  }
-
-  return []
-}
-
-const getDateByKey = (t: any, key: 'welcome' | 'quarter' | 'half' | 'three_quarters' | 'final') =>
-  ymd(
-    t?.[`${key}_date`] ??
-      t?.[`${key}_date_sent`] ??
-      t?.course?.[`${key}_date`] ??
-      t?.course?.[`${key}_date_sent`] ??
-      (key === 'welcome' ? t?.follow_up_date : undefined)
-  )
-
 const TracingNotificationDropdown = () => {
   const dispatch = useDispatch()
   const router = useRouter()
@@ -74,15 +55,8 @@ const TracingNotificationDropdown = () => {
 
     const load = async () => {
       try {
-        const res = await getTracings({})
-        const rows = pickArray(
-          res?.data?.data?.tracings,
-          res?.data?.tracings,
-          res?.data?.data?.data,
-          res?.data?.data,
-          res?.data
-        )
-        if (active) setTracings(rows)
+        const res = await getDashboardTracingNotifications({ date: ymd(new Date()) })
+        if (active) setTracings(res?.data?.data?.notifications ?? [])
       } catch (e) {
         if (active) setTracings([])
       }
@@ -97,29 +71,9 @@ const TracingNotificationDropdown = () => {
 
   const today = ymd(new Date())
   const pendingToday = useMemo(() => {
-    const source = Array.isArray(tracings) ? tracings : []
-
-    return source
-      .filter((t: any) => Number(t?.course_status_id ?? t?.course?.course_status_id) !== 4)
-      .flatMap((t: any) => {
-        const dates = [
-          { label: 'Fecha Fin', value: getDateByKey(t, 'final'), check: Number(t?.final_message ?? 0) },
-          { label: '75%', value: getDateByKey(t, 'three_quarters'), check: Number(t?.three_quarters_message ?? 0) },
-          { label: '50%', value: getDateByKey(t, 'half'), check: Number(t?.half_message ?? 0) },
-          { label: 'Fecha Bienvenida', value: getDateByKey(t, 'welcome'), check: Number(t?.welcome_message ?? 0) },
-          { label: '25%', value: getDateByKey(t, 'quarter'), check: Number(t?.quarter_message ?? 0) }
-        ]
-
-        return dates
-          .filter(d => d.value === today && d.check === 0)
-          .map(d => ({
-            id: Number(t?.id ?? 0),
-            title: `${t?.student_name ?? t?.student?.name ?? ''} ${t?.student_surname ?? t?.student?.surname ?? ''}`.trim(),
-            subtitle: d.label,
-            date: d.value
-          }))
-      })
-      .filter(n => Number.isFinite(n.id) && n.id > 0)
+    return (Array.isArray(tracings) ? tracings : []).filter(
+      (notification: any) => Number.isFinite(Number(notification?.id)) && notification?.date === today
+    )
   }, [tracings, today])
 
   const open = Boolean(anchorEl)

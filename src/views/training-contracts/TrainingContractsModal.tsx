@@ -127,6 +127,8 @@ const TrainingContractsModal: React.FC<TrainingContractsModalProps> = ({
   }, [open, mode, canUpdate])
 
   useEffect(() => {
+    if (!open || !trainingContractId) return
+
     let cancelled = false
 
     const fetchGeneralData = async () => {

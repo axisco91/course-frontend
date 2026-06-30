@@ -1,4 +1,3 @@
-// src/views/dashboard/CoursesMetric.tsx
 import { useEffect, useMemo, useState } from 'react'
 import { Card, CardContent, CardHeader, Typography } from '@mui/material'
 import { useSelector } from 'react-redux'
@@ -8,14 +7,7 @@ import ReactApexChart from 'src/@core/components/react-apexcharts'
 import type { ApexOptions } from 'apexcharts'
 import { useTranslation } from 'react-i18next'
 
-import { getCourses } from 'src/api/api'
-
-type CourseRow = {
-  beginning?: string
-  courseType?: string // "Bonificado" | "CFA" | "Privado" | "Oferta" ...
-}
-
-const getCourseTypeLabel = (t: any) => String(t ?? 'Others')
+import { getDashboardCoursesMetric } from 'src/api/api'
 
 const getCourseColor = (courseType: string) => {
   switch (courseType) {
@@ -30,14 +22,6 @@ const getCourseColor = (courseType: string) => {
     default:
       return '#7367F0'
   }
-}
-
-const getYear = (date?: string) => {
-  if (!date) return null
-  const d = new Date(date)
-  const y = d.getUTCFullYear()
-
-  return Number.isFinite(y) ? String(y) : null
 }
 
 const CoursesMetric = () => {
@@ -56,32 +40,14 @@ const CoursesMetric = () => {
 
     const fetchCourses = async () => {
       try {
-        const res = await getCourses()
-
-        const courses: CourseRow[] = res?.data?.data?.courses ?? res?.data?.courses ?? res?.data ?? []
+        const res = await getDashboardCoursesMetric()
+        const years: string[] = res?.data?.data?.years ?? []
+        const backendSeries: Array<{ name: string; data: number[] }> = res?.data?.data?.series ?? []
 
         if (cancelled) return
 
-        const courseTypes = Array.from(new Set((courses ?? []).map(c => getCourseTypeLabel(c.courseType))))
-        const years = Array.from(
-          new Set((courses ?? []).map(c => getYear(c.beginning)).filter(Boolean) as string[])
-        ).sort()
-
-        const chartSeries = courseTypes.map(type => {
-          const data = years.map(year => {
-            const count = (courses ?? []).filter(c => {
-              const y = getYear(c.beginning)
-
-              return getCourseTypeLabel(c.courseType) === type && y === year
-            }).length
-
-            return count
-          })
-
-          return { name: type, data }
-        })
-
-        const chartOptions: ApexOptions = {
+        setSeries(backendSeries)
+        setOptions({
           chart: {
             type: 'bar',
             stacked: true,
@@ -94,15 +60,10 @@ const CoursesMetric = () => {
           dataLabels: { enabled: false },
           legend: { show: true, position: 'bottom' },
           xaxis: { categories: years },
-          colors: courseTypes.map(t => getCourseColor(t)),
+          colors: backendSeries.map(item => getCourseColor(item.name)),
           grid: { strokeDashArray: 4 }
-        }
-
-        setSeries(chartSeries)
-        setOptions(chartOptions)
+        })
       } catch (e) {
-        // si quieres, aquí puedes usar tu handleError/logout como en el resto
-        // eslint-disable-next-line no-console
         console.error('Error al obtener cursos:', e)
         setSeries([])
         setOptions({})

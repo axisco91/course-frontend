@@ -1,9 +1,7 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import ReactApexChart from 'src/@core/components/react-apexcharts'
 import type { ApexOptions } from 'apexcharts'
-import { getTrainingContracts } from 'src/api/api'
-
-const monthStart = (d: Date) => new Date(d.getFullYear(), d.getMonth(), 1)
+import { getDashboardLiveTrainingContracts } from 'src/api/api'
 
 const LiveTrainingContract = () => {
   const [loading, setLoading] = useState(true)
@@ -14,48 +12,11 @@ const LiveTrainingContract = () => {
     const run = async () => {
       setLoading(true)
       try {
-        const res = await getTrainingContracts()
-        const contracts = res?.data?.data?.training_contracts ?? res?.data?.training_contracts ?? res?.data ?? []
-        const list = Array.isArray(contracts) ? contracts : []
+        const res = await getDashboardLiveTrainingContracts()
+        const categories: string[] = res?.data?.data?.categories ?? []
+        const data: number[] = res?.data?.data?.data ?? []
 
-        // rango de meses: últimos 12 meses (incluye el actual)
-        const maxDate = monthStart(new Date())
-        const minDate = monthStart(new Date())
-        minDate.setMonth(maxDate.getMonth() - 11)
-
-        // construir array de meses (timestamps) entre minDate y maxDate
-        const months: Date[] = []
-        const cur = new Date(minDate)
-        while (cur <= maxDate) {
-          months.push(new Date(cur))
-          cur.setMonth(cur.getMonth() + 1)
-        }
-
-        const counts = Array(months.length).fill(0)
-
-        list.forEach((c: any) => {
-          const statusId = Number(c?.training_contract_status_id)
-          if (statusId !== 2 && statusId !== 4) return
-
-          const begin = c?.beginning ? new Date(c.beginning) : null
-          if (!begin || isNaN(begin.getTime())) return
-
-          let end = c?.end ? new Date(c.end) : null
-          if (statusId === 4 && c?.on_leave_date) {
-            const ol = new Date(c.on_leave_date)
-            if (!isNaN(ol.getTime())) end = ol
-          }
-          if (!end || isNaN(end.getTime())) return
-
-          // contar por mes si el contrato está activo en ese mes
-          months.forEach((m, idx) => {
-            const ms = monthStart(m)
-            if (ms >= monthStart(begin) && ms <= monthStart(end)) counts[idx]++
-          })
-        })
-
-        setSeries([{ name: 'CFA activos', data: counts }])
-
+        setSeries([{ name: 'CFA activos', data }])
         setOptions({
           chart: {
             type: 'area',
@@ -74,14 +35,10 @@ const LiveTrainingContract = () => {
             }
           },
           xaxis: {
-            type: 'datetime',
-            min: minDate.getTime(),
-            max: maxDate.getTime(),
-            categories: months.map(m => m.getTime())
+            categories
           }
         })
       } catch (e) {
-        // eslint-disable-next-line no-console
         console.error('Error fetching training contracts:', e)
       } finally {
         setLoading(false)

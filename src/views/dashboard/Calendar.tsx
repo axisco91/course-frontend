@@ -73,6 +73,18 @@ const compareCalendarEvents = (a: any, b: any) => {
 
 const normalizeKeyPart = (value: any) => removeAccents(String(value ?? '').toLowerCase()).replace(/\s+/g, ' ').trim()
 
+const isHiddenTracingViewEvent = (event: any) => {
+  if (event?.type !== 'trainingContract') return false
+
+  const eventKind = String(event?.meta?.raw?.event_kind ?? '').toLowerCase()
+  const courseId = Number(event?.meta?.raw?.course_id ?? 0)
+
+  if (eventKind === 'start') return true
+  if (eventKind === 'end' && !Number.isFinite(courseId)) return true
+
+  return eventKind === 'end' && courseId <= 0
+}
+
 const getEventSourcePriority = (event: any) => {
   if (event?.type === 'tracing') return 0
   if (event?.type === 'mainContract') return 1
@@ -197,6 +209,7 @@ const Calendar = () => {
           ? ev?.type === 'tracing' || ev?.type === 'mainContract' || ev?.type === 'trainingContract'
           : ev?.type === 'trainingContract' || ev?.type === 'mainContract'
       )
+      .filter(ev => (displayData === 'tracings' ? !isHiddenTracingViewEvent(ev) : true))
 
     return (displayData === 'tracings' ? dedupeTracingViewEvents(filtered) : filtered)
       .slice()
@@ -331,7 +344,7 @@ const Calendar = () => {
           </Box>
           <Box
             sx={{
-              maxHeight: 550,
+              maxHeight: 600,
               overflowY: 'auto',
               overflowX: 'hidden'
             }}

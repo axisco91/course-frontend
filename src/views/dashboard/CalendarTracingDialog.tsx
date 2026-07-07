@@ -71,7 +71,14 @@ const getEntryOrder = (entry: any) => {
   const dateKind = String(entry?.dateKind ?? '').toLowerCase()
   const title = String(entry?.title ?? '').toLowerCase()
 
-  if (dateKind === 'start' || title.includes('inicio curso') || title.endsWith(' - inicio') || title.includes(' - inicio contrato')) {
+  if (
+    dateKind === 'start' ||
+    dateKind === 'contract_start' ||
+    title.includes('inicio curso') ||
+    title.includes('inicio formacion') ||
+    title.endsWith(' - inicio') ||
+    title.includes(' - inicio contrato')
+  ) {
     return 0
   }
 
@@ -79,7 +86,14 @@ const getEntryOrder = (entry: any) => {
   if (dateKind === 'half' || title.includes('50%')) return 2
   if (dateKind === 'three_quarters' || title.includes('75%')) return 3
 
-  if (dateKind === 'end' || title.includes('fin curso') || title.endsWith(' - fin') || title.includes(' - fin contrato')) {
+  if (
+    dateKind === 'end' ||
+    dateKind === 'contract_end' ||
+    title.includes('fin curso') ||
+    title.includes('fin formacion') ||
+    title.endsWith(' - fin') ||
+    title.includes(' - fin contrato')
+  ) {
     return 4
   }
 
@@ -103,6 +117,18 @@ const getEntrySourcePriority = (entry: any) => {
   return 3
 }
 
+const isHiddenTracingEntryEvent = (event: any) => {
+  if (event?.type !== 'trainingContract') return false
+
+  const eventKind = String(event?.meta?.raw?.event_kind ?? '').toLowerCase()
+  const courseId = Number(event?.meta?.raw?.course_id ?? 0)
+
+  if (eventKind === 'start') return true
+  if (eventKind === 'end' && !Number.isFinite(courseId)) return true
+
+  return eventKind === 'end' && courseId <= 0
+}
+
 const dedupeEntries = (entries: any[]) => {
   const bestByKey = new Map<string, any>()
 
@@ -121,6 +147,14 @@ const dedupeEntries = (entries: any[]) => {
   }
 
   return Array.from(bestByKey.values())
+}
+
+const canOpenEntry = (entry: any) => {
+  if (entry?.kind === 'mainContract' || entry?.kind === 'trainingContract') {
+    return Number.isFinite(Number(entry?.trainingContractId))
+  }
+
+  return Number.isFinite(Number(entry?.tracingId))
 }
 
 const CalendarTracingDialog = ({
@@ -148,6 +182,7 @@ const CalendarTracingDialog = ({
         events
         .filter((event: any) => ymd(event?.start) === day)
         .filter((event: any) => ['tracing', 'mainContract', 'trainingContract'].includes(event?.type))
+        .filter((event: any) => !isHiddenTracingEntryEvent(event))
         .map((event: any, index: number) => {
           const tracing = event?.meta?.tracing
           if (tracing) {
@@ -186,11 +221,13 @@ const CalendarTracingDialog = ({
               ? `${raw.training_contract.student.name ?? ''} ${raw.training_contract.student.surname ?? ''}`.trim()
               : String(event?.title ?? '').split('-')[0].trim()
 
+          const descriptiveLabel = raw?.event_label ?? event?.title ?? ''
+
           return {
             key: `contract-${trainingContractId}-${event?.title ?? index}-${index}`,
             kind: event?.type === 'mainContract' ? 'mainContract' : 'trainingContract',
-            title: event?.title ?? '',
-            dateKind: '',
+            title: studentName && descriptiveLabel ? `${studentName} - ${descriptiveLabel}` : descriptiveLabel,
+            dateKind: raw?.event_kind ?? '',
             studentName,
             courseLabel: raw?.course_name ?? '',
             companyLabel: raw?.company_name ?? '',
@@ -298,9 +335,11 @@ const CalendarTracingDialog = ({
                   </Box>
 
                   <Box>
-                    <IconButton onClick={() => handleEye(entry)} title={t('View')}>
-                      <Icon icon='tabler:eye' fontSize={20} />
-                    </IconButton>
+                    {canOpenEntry(entry) ? (
+                      <IconButton onClick={() => handleEye(entry)} title={t('View')}>
+                        <Icon icon='tabler:eye' fontSize={20} />
+                      </IconButton>
+                    ) : null}
                   </Box>
                 </Box>
               )

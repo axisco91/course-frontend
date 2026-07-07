@@ -71,6 +71,28 @@ const getTrainingElementEnd = (item: any) =>
       item?.finish
   )
 
+const getStudentName = (item: any, fallback: string) =>
+  item?.student != null
+    ? `${item.student.name ?? ''} ${item.student.surname ?? ''}`.trim()
+    : item?.training_contract?.student != null
+    ? `${item.training_contract.student.name ?? ''} ${item.training_contract.student.surname ?? ''}`.trim()
+    : fallback
+
+const getContractHours = (item: any) => {
+  const formationHours = Number(item?.formation_hours)
+  if (Number.isFinite(formationHours) && formationHours > 0) return formationHours
+
+  const firstYear = Number(item?.formative_hours_first_year)
+  const secondYear = Number(item?.formative_hours_second_year)
+  const yearlyHours = (Number.isFinite(firstYear) ? firstYear : 0) + (Number.isFinite(secondYear) ? secondYear : 0)
+  if (yearlyHours > 0) return yearlyHours
+
+  const totalHours = Number(item?.total_hours)
+  if (Number.isFinite(totalHours) && totalHours > 0) return totalHours
+
+  return ''
+}
+
 const CalendarChoresDialog = ({
   open,
   onClose,
@@ -92,33 +114,69 @@ const CalendarChoresDialog = ({
   const choresForDay = useMemo(() => {
     if (!day) return []
     const sourceElements = Array.isArray(externalElements) ? externalElements : []
-    if (sourceElements.length > 0) {
-      return sourceElements.filter((item: any) => {
-        const start = getTrainingElementStart(item)
-        const end = getTrainingElementEnd(item)
 
-        return start === day || end === day
-      })
+    if (sourceElements.length > 0) {
+      return sourceElements
+        .filter((item: any) => {
+          const start = getTrainingElementStart(item)
+          const end = getTrainingElementEnd(item)
+
+          return start === day || end === day
+        })
+        .map((item: any, index: number) => {
+          const start = getTrainingElementStart(item)
+          const end = getTrainingElementEnd(item)
+          const isBeginning = start === day
+
+          return {
+            key: `external-${item?.id ?? index}-${isBeginning ? 'start' : 'end'}`,
+            item,
+            student: getStudentName(item, t('Student not found')),
+            kind: 'element',
+            eventLabel: item?.event_label ?? (isBeginning ? t('Beginning') : t('End')),
+            taskDate: isBeginning ? start : end,
+            start,
+            end,
+            trainingActionName: item?.training_action_name ?? '',
+            hoursLabel: item?.training_action_total_hours ?? '',
+            companyName: item?.company_name ?? item?.training_contract?.company?.name ?? '',
+            registeredCourse: hasRegisteredCourse(item),
+            viewId: item?.training_contract_id ?? item?.training_contract?.id ?? item?.id
+          }
+        })
     }
 
     return (Array.isArray(events) ? events : [])
       .filter((ev: any) => ['trainingContract', 'mainContract'].includes(ev?.type) && ymd(ev?.start) === day)
-      .map((ev: any) => ev?.meta?.raw)
-      .filter(Boolean)
-      .reduce((acc: any[], item: any) => {
-        const id = Number(item?.id ?? item?.training_contract_id ?? item?.training_contract?.id)
-        if (!Number.isFinite(id)) return acc
-        if (acc.some(existing => Number(existing?.id ?? existing?.training_contract_id ?? existing?.training_contract?.id) === id)) {
-          return acc
-        }
-        acc.push(item)
+      .map((ev: any, index: number) => {
+        const item = ev?.meta?.raw
+        if (!item) return null
 
-        return acc
-      }, [])
-  }, [day, events, externalElements])
+        const isContractSummary = ev?.type === 'mainContract' || ev?.meta?.source === 'trainingContractMain'
+        const start = getTrainingElementStart(item)
+        const end = getTrainingElementEnd(item)
+
+        return {
+          key: `${ev?.type ?? 'event'}-${item?.id ?? item?.training_contract_id ?? index}-${item?.event_kind ?? index}`,
+          item,
+          student: getStudentName(item, t('Student not found')),
+          kind: isContractSummary ? 'contract' : 'element',
+          eventLabel: item?.event_label ?? ev?.title ?? '',
+          taskDate: ymd(ev?.start) || start || end,
+          start,
+          end,
+          trainingActionName: isContractSummary ? 'Contrato formativo' : item?.training_action_name ?? '',
+          hoursLabel: isContractSummary ? getContractHours(item) : item?.training_action_total_hours ?? '',
+          companyName: item?.company_name ?? '',
+          registeredCourse: hasRegisteredCourse(item),
+          viewId: item?.training_contract_id ?? item?.training_contract?.id ?? item?.id
+        }
+      })
+      .filter(Boolean)
+  }, [day, events, externalElements, t])
 
   const handleEye = (item: any) => {
-    const id = item?.training_contract_id ?? item?.training_contract?.id ?? item?.id
+    const id = item?.viewId ?? item?.training_contract_id ?? item?.training_contract?.id ?? item?.id
     if (!id) return
 
     dispatch(trainingContractActions.setId(Number(id)))
@@ -138,23 +196,13 @@ const CalendarChoresDialog = ({
           </Box>
         ) : (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, py: 2 }}>
-            {choresForDay.map((item: any, idx: number) => {
-              const student = item?.student
-                ? `${item.student.name ?? ''} ${item.student.surname ?? ''}`.trim()
-                : item?.training_contract?.student != null
-                ? `${item.training_contract.student.name ?? ''} ${item.training_contract.student.surname ?? ''}`.trim()
-                : t('Student not found')
-
-              const start = getTrainingElementStart(item)
-              const end = getTrainingElementEnd(item)
-              const isBeginning = start === day
-              const taskDate = isBeginning ? start : end
-              const isDone = isPastCalendarDay(taskDate)
-              const registeredCourse = hasRegisteredCourse(item)
+            {choresForDay.map((item: any) => {
+              const isDone = isPastCalendarDay(item?.taskDate ?? '')
+              const registeredCourse = Boolean(item?.registeredCourse)
 
               return (
                 <Box
-                  key={`${item.id}-${idx}`}
+                  key={item.key}
                   sx={{
                     p: 2,
                     borderRadius: 1,
@@ -167,24 +215,33 @@ const CalendarChoresDialog = ({
                   }}
                 >
                   <Box>
-                    <Typography fontWeight={800}>{student}</Typography>
+                    <Typography fontWeight={800}>{item.student}</Typography>
 
                     <Typography variant='body2' sx={{ mt: 1 }}>
-                      <b>{isBeginning ? `${t('Beginning')}:` : `${t('End')}:`}</b>{' '}
-                      {isBeginning ? start : end}
+                      <b>{`${t('Type')}:`}</b> {item.eventLabel}
                     </Typography>
 
                     <Typography variant='body2'>
-                      <b>{`${t('Training action')}:`}</b> {item.training_action_name ?? ''}
+                      <b>{`${t('Date')}:`}</b> {item.taskDate}
                     </Typography>
 
                     <Typography variant='body2'>
-                      <b>{`${t('Hours')}:`}</b> {item.training_action_total_hours ?? ''}
+                      <b>{`${t('Training action')}:`}</b> {item.trainingActionName}
                     </Typography>
 
-                    {isBeginning ? (
+                    <Typography variant='body2'>
+                      <b>{`${t('Hours')}:`}</b> {item.hoursLabel}
+                    </Typography>
+
+                    {item.companyName ? (
+                      <Typography variant='body2'>
+                        <b>{`${t('Company')}:`}</b> {item.companyName}
+                      </Typography>
+                    ) : null}
+
+                    {item.start || item.end ? (
                       <Typography variant='body2' color='text.secondary'>
-                        {start} → {end}
+                        {(item.start || '-') + ' -> ' + (item.end || '-')}
                       </Typography>
                     ) : null}
                   </Box>

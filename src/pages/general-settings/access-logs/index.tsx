@@ -9,7 +9,7 @@ const AccessLogs = () => {
   const { t } = useTranslation()
 
   return (
-    <Permission requiredPermissions={['global.generalSettings.index']}>
+    <Permission requiredPermissions={['read.management']}>
       <Grid container spacing={6}>
         <Grid item xs={12}>
           <AccessLogsTable />

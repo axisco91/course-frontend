@@ -1,7 +1,21 @@
 // TracingsGeneralTab.tsx
 import Autocomplete from 'src/views/components/GuardedAutocomplete'
 import React, { Fragment, forwardRef, useContext, useEffect, useMemo, useRef, useState } from 'react'
-import { Box, Button, FormControlLabel, Grid, MenuItem, Switch, Typography } from '@mui/material'
+import {
+  Box,
+  Button,
+  CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  FormControlLabel,
+  Grid,
+  Menu,
+  MenuItem,
+  Switch,
+  Typography
+} from '@mui/material'
 import Icon from 'src/@core/components/icon'
 import CustomTextField from 'src/@core/components/mui/text-field'
 import DatePicker from 'react-datepicker'
@@ -23,7 +37,7 @@ import { studentActions } from 'src/reducers/students/StudentReducer'
 import { companyActions } from 'src/reducers/company/CompanyReducer'
 
 // ✅ APIs (renombra a tus exports reales)
-import { getTracing, editTracing } from 'src/api/api'
+import { getEmailTemplates, getTracing, editTracing, sendTracingMail } from 'src/api/api'
 
 type Mode = 'view' | 'edit' | 'create'
 type List = { id: number; name: string }
@@ -83,6 +97,67 @@ const tracingResultOptions = [
   { value: 2, label: 'No realizado' }
 ]
 
+const escapeHtml = (value: unknown) =>
+  String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;')
+
+const replaceTemplateVariables = (template: string, variables: Record<string, unknown>) =>
+  template.replace(/\{\{\s*([a-z_]+)\s*\}\}/gi, (_match, key) => escapeHtml(variables[key] ?? ''))
+
+const numericValue = (value: unknown) => {
+  if (value === null || value === undefined || value === '') return null
+  const parsed = Number(String(value).replace(',', '.'))
+
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+const formatAmount = (value: number) =>
+  new Intl.NumberFormat('es-ES', { maximumFractionDigits: 2 }).format(Math.max(0, value))
+
+const buildThreeQuartersBody = (template: string, progressMessage: string) => {
+  const progressHtml = progressMessage
+    .trim()
+    .split(/\n\s*\n/)
+    .map(paragraph => `<p>${escapeHtml(paragraph).replace(/\n/g, '<br>')}</p>`)
+    .join('')
+  if (/\{\{\s*progress_message\s*\}\}/i.test(template)) {
+    return template.replace(/<p>\s*\{\{\s*progress_message\s*\}\}\s*<\/p>/i, progressHtml)
+      .replace(/\{\{\s*progress_message\s*\}\}/gi, progressHtml)
+  }
+
+  const insertionPoint = template.search(/<p>\s*(Como sabes|Saludos)/i)
+
+  return insertionPoint >= 0
+    ? `${template.slice(0, insertionPoint)}${progressHtml}${template.slice(insertionPoint)}`
+    : `${template}${progressHtml}`
+}
+
+type ThreeQuartersReview = {
+  scenarioLabel: string
+  subject: string
+  bodyHtml: string
+  performedHours: number | null
+  totalHours: number | null
+  performedUnits: number | null
+  totalUnits: number | null
+  performedActivities: number | null
+  totalActivities: number | null
+  performedFinalEvaluation: number | null
+  totalFinalEvaluations: number | null
+}
+
+type EmailReview = {
+  type: string
+  title: string
+  subject: string
+  bodyHtml: string
+  extraData: Record<string, unknown>
+}
+
 // Igual que en el formulario antiguo: sin validaciones obligatorias aquí.
 const schema = yup.object().shape({})
 
@@ -127,6 +202,7 @@ type FormValues = {
   half_message: boolean
   three_quarters_message: boolean
   final_message: boolean
+  one_week_message: boolean
 
   // other
   follow_up_date: string
@@ -208,6 +284,14 @@ const TracingsGeneralTab: React.FC<TracingsGeneralTabProps> = ({ open, mode, tra
   const readOnly = mode === 'view'
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [sendingMailType, setSendingMailType] = useState<string | null>(null)
+  const [finalEmailMenuAnchor, setFinalEmailMenuAnchor] = useState<null | HTMLElement>(null)
+  const [reviewingThreeQuarters, setReviewingThreeQuarters] = useState(false)
+  const [threeQuartersReview, setThreeQuartersReview] = useState<ThreeQuartersReview | null>(null)
+  const [reviewingMailType, setReviewingMailType] = useState<string | null>(null)
+  const [emailReview, setEmailReview] = useState<EmailReview | null>(null)
+  const emailBodyEditorRef = useRef<HTMLDivElement | null>(null)
+  const threeQuartersBodyEditorRef = useRef<HTMLDivElement | null>(null)
   const loadRequestIdRef = useRef(0)
 
   const defaultValues = useMemo<FormValues>(
@@ -245,6 +329,7 @@ const TracingsGeneralTab: React.FC<TracingsGeneralTabProps> = ({ open, mode, tra
       half_message: false,
       three_quarters_message: false,
       final_message: false,
+      one_week_message: false,
 
       follow_up_date: '',
       final_test: '',
@@ -284,6 +369,12 @@ const TracingsGeneralTab: React.FC<TracingsGeneralTabProps> = ({ open, mode, tra
   // ✅ si cambia student, rellena nombre/apellidos (solo visual)
   const studentWatch: any = watch('student')
   const companyWatch: any = watch('company')
+  const welcomeMessageWatch = watch('welcome_message')
+  const quarterMessageWatch = watch('quarter_message')
+  const halfMessageWatch = watch('half_message')
+  const threeQuartersMessageWatch = watch('three_quarters_message')
+  const finalMessageWatch = watch('final_message')
+  const oneWeekMessageWatch = watch('one_week_message')
   useEffect(() => {
     if (!open) return
     if (!studentWatch) {
@@ -408,6 +499,7 @@ const TracingsGeneralTab: React.FC<TracingsGeneralTabProps> = ({ open, mode, tra
           half_message: String(tr.half_message ?? '0') === '1',
           three_quarters_message: String(tr.three_quarters_message ?? '0') === '1',
           final_message: String(tr.final_message ?? '0') === '1',
+          one_week_message: String(tr.one_week_message ?? '0') === '1',
 
           follow_up_date: toInputDate(tr.follow_up_date),
           final_test: tr.final_test ?? '',
@@ -505,6 +597,315 @@ const TracingsGeneralTab: React.FC<TracingsGeneralTabProps> = ({ open, mode, tra
       customInput={<DateInput label={t(label)} disabled={!canEdit} />}
     />
   )
+
+  const handleSendMail = async (type: string, extraData: Record<string, any> = {}) => {
+    if (!tracingId) return false
+
+    setSendingMailType(type)
+    try {
+      const response = await sendTracingMail(tracingId, { type, ...extraData })
+      const updatedTracing = response.data?.data?.tracing
+
+      if (updatedTracing) {
+        if (type === 'welcome') {
+          setValue('welcome_message', String(updatedTracing.welcome_message ?? '0') === '1')
+          setValue('welcome_date_sent', toInputDate(updatedTracing.welcome_date_sent))
+        }
+        if (type === 'quarter') {
+          setValue('quarter_message', String(updatedTracing.quarter_message ?? '0') === '1')
+          setValue('quarter_date_sent', toInputDate(updatedTracing.quarter_date_sent))
+        }
+        if (type === 'half') {
+          setValue('half_message', String(updatedTracing.half_message ?? '0') === '1')
+          setValue('half_date_sent', toInputDate(updatedTracing.half_date_sent))
+        }
+        if (type === 'three_quarters') {
+          setValue('three_quarters_message', String(updatedTracing.three_quarters_message ?? '0') === '1')
+          setValue('three_quarters_date_sent', toInputDate(updatedTracing.three_quarters_date_sent))
+        }
+        if (type === 'final') {
+          setValue('final_message', String(updatedTracing.final_message ?? '0') === '1')
+          setValue('final_date_sent', toInputDate(updatedTracing.final_date_sent))
+        }
+        if (type === 'one_week') {
+          setValue('one_week_message' as any, String(updatedTracing.one_week_message ?? '0') === '1')
+        }
+      }
+
+      toast.success(response.data?.message ?? t('Email sent'))
+      dispatch(generalActions.addFilterButtonClickCount())
+
+      return true
+    } catch (error) {
+      handleError(error, logout)
+
+      return false
+    } finally {
+      setSendingMailType(null)
+    }
+  }
+
+  const openEmailReview = async (type: string, extraData: Record<string, unknown> = {}) => {
+    if (!tracingId) return
+
+    const templateTypes: Record<string, string> = {
+      welcome: 'greeting',
+      quarter: 'quarter',
+      half: 'half',
+      final: 'final',
+      one_week: 'course_end_reminder'
+    }
+    const titles: Record<string, string> = {
+      welcome: 'Correo de bienvenida',
+      quarter: 'Correo del 25 %',
+      half: 'Correo del 50 %',
+      final: `Correo de fin: ${extraData.final_result === 'no_apto' ? 'NO APTO' : 'APTO'}`,
+      one_week: 'Correo de último día'
+    }
+    const templateType = templateTypes[type]
+    if (!templateType) return
+
+    setReviewingMailType(type)
+    try {
+      const [tracingResponse, templatesResponse] = await Promise.all([
+        getTracing(tracingId),
+        getEmailTemplates()
+      ])
+      const tr = tracingResponse.data?.data?.tracing ?? tracingResponse.data?.data ?? null
+      const templates = templatesResponse.data?.data?.email_templates ?? []
+      const template = templates.find((item: any) => item.mail_type === templateType)
+      if (!tr || !template) throw new Error('No se ha podido preparar la vista previa del correo.')
+
+      const trainingAction = tr.course?.training_action ?? tr.course?.trainingAction ?? {}
+      const formativeCode = String(trainingAction.formative_action ?? '')
+      const formativeName = String(trainingAction.name ?? '')
+      const formativeAction = formativeName || formativeCode || tr.course?.name || ''
+      const courseTeacherName = [tr.course?.teacher?.name, tr.course?.teacher?.surname]
+        .filter(Boolean)
+        .join(' ')
+      const tutorName = String(
+        tr.training_contract_element?.training_tutor
+        || courseTeacherName
+        || 'Tutor/a del curso'
+      )
+      const isNotSuitable = extraData.final_result === 'no_apto'
+      const previewVariables = {
+        student_name: [tr.student?.name, tr.student?.surname].filter(Boolean).join(' '),
+        formative_action: formativeAction,
+        tutor_name: tutorName,
+        subject_code: [formativeCode, tr.course?.group].filter(Boolean).join('/'),
+        total_hours: trainingAction.total_hours ?? tr.total_hours ?? '-',
+        course_start_date: toDisplayDate(tr.course?.beginning ?? '') || '-',
+        course_end_date: toDisplayDate(tr.course?.end ?? '') || '-',
+        milestone_label: type === 'quarter' ? '25 %' : type === 'half' ? '50 %' : '',
+        milestone_date: type === 'quarter'
+          ? toDisplayDate(tr.course?.quarter_date ?? '')
+          : toDisplayDate(tr.course?.half_date ?? ''),
+        final_result: isNotSuitable ? 'NO APTO' : 'APTO',
+        final_intro: isNotSuitable
+          ? 'Le informamos de que el curso finaliza hoy y, tras revisar su actividad en la plataforma, su calificación final es de NO APTO.'
+          : 'Te informamos de que has obtenido la calificación de APTO en el curso.',
+        final_detail: isNotSuitable
+          ? 'No se han alcanzado los requisitos de conexión, visualización de unidades y realización de evaluaciones establecidos para superar la formación.'
+          : '¡Enhorabuena por haber completado satisfactoriamente la formación!'
+      }
+
+      setEmailReview({
+        type,
+        title: titles[type],
+        subject: replaceTemplateVariables(template.subject, previewVariables),
+        bodyHtml: replaceTemplateVariables(template.body_html, previewVariables),
+        extraData,
+      })
+    } catch (error) {
+      handleError(error, logout)
+    } finally {
+      setReviewingMailType(null)
+    }
+  }
+
+  const sendReviewedMail = async () => {
+    if (!emailReview) return
+    const sent = await handleSendMail(emailReview.type, {
+      ...emailReview.extraData,
+      subject: emailReview.subject,
+      body_html: emailBodyEditorRef.current?.innerHTML ?? emailReview.bodyHtml
+    })
+    if (sent) setEmailReview(null)
+  }
+
+  const openThreeQuartersReview = async () => {
+    if (!tracingId) return
+
+    setReviewingThreeQuarters(true)
+    try {
+      const [tracingResponse, templatesResponse] = await Promise.all([
+        getTracing(tracingId, { refresh_moodle: 1 }),
+        getEmailTemplates()
+      ])
+      const tr = tracingResponse.data?.data?.tracing ?? tracingResponse.data?.data ?? null
+      const templates = templatesResponse.data?.data?.email_templates ?? []
+      const template = templates.find((item: any) => item.mail_type === 'three_quarters')
+      if (!tr || !template) throw new Error('No se han podido preparar los datos del correo del 75 %.')
+
+      const trainingAction = tr.course?.training_action ?? tr.course?.trainingAction ?? {}
+      const performedHours = numericValue(tr.performed_hours)
+      const totalHours = numericValue(tr.total_hours ?? trainingAction.total_hours)
+      const performedUnits = numericValue(tr.performed_units)
+      const totalUnits = numericValue(tr.total_units ?? tr.number_units ?? trainingAction.number_units)
+      const performedActivities = numericValue(tr.performed_activities)
+      const totalActivities = numericValue(
+        tr.total_activities ?? tr.number_activities ?? trainingAction.number_activities
+      )
+      const totalFinalEvaluations = numericValue(tr.number_final_evaluations)
+      const performedFinalEvaluation = totalFinalEvaluations !== null && totalFinalEvaluations > 0
+        ? (Number(tr.final_test) === 1 ? 1 : 0)
+        : 0
+      const courseEndDate = toDisplayDate(tr.course?.end ?? tr.course_end ?? '') || 'la fecha indicada'
+
+      const pending: string[] = []
+      const addPending = (performed: number | null, total: number | null, singular: string, plural: string) => {
+        if (total === null || total <= 0) return
+        const remaining = Math.max(total - (performed ?? 0), 0)
+        if (remaining > 0) pending.push(`${formatAmount(remaining)} ${remaining === 1 ? singular : plural}`)
+      }
+      addPending(performedHours, totalHours, 'hora de conexión', 'horas de conexión')
+      addPending(performedUnits, totalUnits, 'unidad', 'unidades')
+      addPending(performedActivities, totalActivities, 'evaluación', 'evaluaciones')
+      if (totalFinalEvaluations !== null && totalFinalEvaluations > 0 && performedFinalEvaluation === 0) {
+        pending.push('la evaluación final')
+      }
+
+      const hasKnownTotals = [totalHours, totalUnits, totalActivities, totalFinalEvaluations]
+        .some(value => value !== null && value > 0)
+      const pendingText = pending.join(', ').replace(/, ([^,]*)$/, ' y $1')
+      const progressRatios = [
+        totalHours !== null && totalHours > 0 ? (performedHours ?? 0) / totalHours : null,
+        totalUnits !== null && totalUnits > 0 ? (performedUnits ?? 0) / totalUnits : null,
+        totalActivities !== null && totalActivities > 0 ? (performedActivities ?? 0) / totalActivities : null
+      ].filter((value): value is number => value !== null)
+      const isAdvanced = progressRatios.length > 0 && progressRatios.every(value => value >= 0.75)
+      const hasNotStartedUnits = totalUnits !== null && totalUnits > 0 && (performedUnits ?? 0) === 0
+      const lastConnectionRaw = String(tr.last_connection ?? '').trim()
+      const lastConnectionDate = lastConnectionRaw && lastConnectionRaw !== 'Never accessed'
+        ? new Date(lastConnectionRaw.replace(' ', 'T'))
+        : null
+      const inactiveDays = lastConnectionDate && !Number.isNaN(lastConnectionDate.getTime())
+        ? Math.floor((Date.now() - lastConnectionDate.getTime()) / 86400000)
+        : null
+      const isInactive = inactiveDays === null || inactiveDays >= 7
+
+      let scenarioLabel = 'Progreso con pendientes'
+      let progressMessage = pending.length > 0
+        ? `Actualmente te quedan ${pendingText} por completar. Recuerda que el curso finaliza el ${courseEndDate} y es importante que completes todos los requisitos antes de esa fecha.
+
+Te recomendamos acceder a la plataforma con regularidad, organizar el tiempo disponible y avanzar de forma progresiva en las unidades y evaluaciones pendientes. Para superar satisfactoriamente la formación, debes visualizar la totalidad de las unidades, completar todas las evaluaciones y alcanzar la puntuación mínima establecida.
+
+Revisa tu progreso y procura no dejar el trabajo para los últimos días. Si tienes alguna dificultad para continuar, acceder a una unidad o realizar una evaluación, ponte en contacto conmigo para que pueda ayudarte.`
+        : hasKnownTotals
+          ? `Has completado todos los requisitos registrados. Puedes seguir repasando el contenido hasta la finalización del curso, el ${courseEndDate}.`
+          : `Revisa las horas, unidades y evaluaciones del curso. Recuerda que el curso finaliza el ${courseEndDate}.`
+
+      if (hasNotStartedUnits) {
+        scenarioLabel = 'Primera unidad sin iniciar'
+        const hoursStatus = totalHours !== null
+          ? `Aunque llevas ${formatAmount(performedHours ?? 0)} ${performedHours === 1 ? 'hora contabilizada' : 'horas contabilizadas'} de las ${formatAmount(totalHours)} horas totales en la plataforma, no has iniciado la primera unidad del curso.`
+          : 'Todavía no has iniciado la primera unidad del curso.'
+        progressMessage = `${hoursStatus} Te recordamos que la formación finaliza el ${courseEndDate}.
+
+Para obtener la calificación de apto, es necesario visualizar la totalidad de las unidades, realizar todas las evaluaciones y obtener al menos una nota mínima de 5 en cada una de ellas.
+
+Te animamos a comenzar cuanto antes con la primera unidad para poder completar la formación dentro del plazo establecido. Si tienes cualquier dificultad para acceder o necesitas ayuda para comenzar, estoy a tu disposición.`
+      } else if (isInactive && pending.length > 0) {
+        scenarioLabel = 'Sin acceso reciente'
+        progressMessage = `Hemos comprobado que no has vuelto a acceder a la plataforma en los últimos días. Actualmente te quedan ${pendingText} por completar.
+
+La fecha de finalización del curso es el ${courseEndDate}, por lo que es importante que retomes la formación lo antes posible para cumplir los requisitos dentro del plazo disponible.
+
+Si estás teniendo algún problema o dificultad que te impida continuar, ponte en contacto conmigo para poder ayudarte.`
+      } else if (isAdvanced) {
+        scenarioLabel = pending.length > 0 ? 'Progreso avanzado' : 'Requisitos completados'
+        const remainingText = pending.length > 0
+          ? `Te animamos a realizar un último repaso y completar ${pendingText} antes del ${courseEndDate}.`
+          : `Has completado los requisitos registrados. Puedes seguir repasando el contenido hasta la finalización del curso, el ${courseEndDate}.`
+        progressMessage = `Hemos comprobado que llevas el curso muy avanzado y queremos felicitarte por el buen trabajo realizado y por el seguimiento constante que has mantenido durante la formación.
+
+${remainingText}
+
+Enhorabuena por el trabajo realizado y mucho ánimo en este último tramo.`
+      }
+
+      setValue('performed_hours', performedHours ?? 0)
+      setValue('total_hours', totalHours ?? '')
+      setValue('performed_units', performedUnits ?? 0)
+      setValue('total_units', totalUnits ?? '')
+      setValue('performed_activities', performedActivities ?? 0)
+      setValue('total_activities', totalActivities ?? '')
+
+      const formativeCode = String(trainingAction.formative_action ?? '')
+      const formativeName = String(trainingAction.name ?? '')
+      const formativeAction = formativeName || formativeCode || tr.course?.name || ''
+      const previewTutorName = String(
+        tr.training_contract_element?.training_tutor
+        || [tr.course?.teacher?.name, tr.course?.teacher?.surname].filter(Boolean).join(' ')
+        || 'Tutor/a del curso'
+      )
+      const previewVariables = {
+        student_name: [tr.student?.name, tr.student?.surname].filter(Boolean).join(' '),
+        formative_action: formativeAction,
+        tutor_name: previewTutorName,
+        subject_code: [formativeCode, tr.course?.group].filter(Boolean).join('/'),
+        course_end_date: courseEndDate,
+        remaining_hours: totalHours !== null ? formatAmount(Math.max(totalHours - (performedHours ?? 0), 0)) : '-',
+        remaining_units: totalUnits !== null ? formatAmount(Math.max(totalUnits - (performedUnits ?? 0), 0)) : '-',
+        remaining_activities: totalActivities !== null
+          ? formatAmount(Math.max(totalActivities - (performedActivities ?? 0), 0))
+          : '-'
+      }
+      setThreeQuartersReview({
+        scenarioLabel,
+        subject: replaceTemplateVariables(template.subject, previewVariables),
+        bodyHtml: replaceTemplateVariables(
+          buildThreeQuartersBody(template.body_html, progressMessage),
+          previewVariables
+        ),
+        performedHours,
+        totalHours,
+        performedUnits,
+        totalUnits,
+        performedActivities,
+        totalActivities,
+        performedFinalEvaluation,
+        totalFinalEvaluations
+      })
+    } catch (error) {
+      handleError(error, logout)
+    } finally {
+      setReviewingThreeQuarters(false)
+    }
+  }
+
+  const sendReviewedThreeQuartersMail = async () => {
+    if (!threeQuartersReview) return
+    const sent = await handleSendMail('three_quarters', {
+      subject: threeQuartersReview.subject,
+      body_html: threeQuartersBodyEditorRef.current?.innerHTML ?? threeQuartersReview.bodyHtml
+    })
+    if (sent) setThreeQuartersReview(null)
+  }
+
+  const openFinalEmailMenu = (event: React.MouseEvent<HTMLElement>) => {
+    setFinalEmailMenuAnchor(event.currentTarget)
+  }
+
+  const closeFinalEmailMenu = () => {
+    setFinalEmailMenuAnchor(null)
+  }
+
+  const sendFinalMailWithResult = async (finalResult: 'apto' | 'no_apto') => {
+    closeFinalEmailMenu()
+    await openEmailReview('final', { final_result: finalResult })
+  }
 
   // ----------------------------
   return (
@@ -733,11 +1134,241 @@ const TracingsGeneralTab: React.FC<TracingsGeneralTabProps> = ({ open, mode, tra
           <Typography variant='h6'>{t('Follow-up dates')}</Typography>
         </Box>
 
+        <Box
+          sx={{
+            mb: 6,
+            display: 'grid',
+            gap: 2,
+            gridTemplateColumns: {
+              xs: 'repeat(1, minmax(0, 1fr))',
+              md: 'repeat(3, minmax(0, 1fr))'
+            }
+          }}
+        >
+          <Button
+            variant='outlined'
+            disabled={loading || saving || reviewingMailType !== null || sendingMailType !== null || Boolean(welcomeMessageWatch)}
+            onClick={() => openEmailReview('welcome')}
+            sx={{ width: '100%' }}
+          >
+            {reviewingMailType === 'welcome'
+              ? 'Preparando...'
+              : sendingMailType === 'welcome' ? 'Enviando...' : 'Enviar correo bienvenida'}
+          </Button>
+          <Button
+            variant='outlined'
+            disabled={loading || saving || reviewingMailType !== null || sendingMailType !== null || Boolean(halfMessageWatch)}
+            onClick={() => openEmailReview('half')}
+            sx={{ width: '100%' }}
+          >
+            {reviewingMailType === 'half'
+              ? 'Preparando...'
+              : sendingMailType === 'half' ? 'Enviando...' : 'Enviar 50%'}
+          </Button>
+          <Button
+            variant='outlined'
+            disabled={loading || saving || reviewingMailType !== null || sendingMailType !== null || Boolean(oneWeekMessageWatch)}
+            onClick={() => openEmailReview('one_week')}
+            sx={{ width: '100%' }}
+          >
+            {reviewingMailType === 'one_week'
+              ? 'Preparando...'
+              : sendingMailType === 'one_week' ? 'Enviando...' : 'Enviar correo termina hoy'}
+          </Button>
+          <Button
+            variant='outlined'
+            disabled={loading || saving || reviewingMailType !== null || sendingMailType !== null || Boolean(quarterMessageWatch)}
+            onClick={() => openEmailReview('quarter')}
+            sx={{ width: '100%' }}
+          >
+            {reviewingMailType === 'quarter'
+              ? 'Preparando...'
+              : sendingMailType === 'quarter' ? 'Enviando...' : 'Enviar 25%'}
+          </Button>
+          <Button
+            variant='outlined'
+            disabled={
+              loading || saving || reviewingThreeQuarters || sendingMailType !== null || Boolean(threeQuartersMessageWatch)
+            }
+            onClick={openThreeQuartersReview}
+            sx={{ width: '100%' }}
+          >
+            {reviewingThreeQuarters
+              ? 'Actualizando Moodle...'
+              : sendingMailType === 'three_quarters'
+                ? 'Enviando...'
+                : 'Enviar 75%'}
+          </Button>
+          <Button
+            variant='outlined'
+            disabled={
+              loading || saving || reviewingMailType !== null || sendingMailType !== null || Boolean(finalMessageWatch)
+            }
+            onClick={openFinalEmailMenu}
+            sx={{ width: '100%' }}
+          >
+            {reviewingMailType === 'final'
+              ? 'Preparando...'
+              : sendingMailType === 'final' ? 'Enviando...' : 'Enviar correo fin'}
+          </Button>
+          <Menu
+            anchorEl={finalEmailMenuAnchor}
+            open={Boolean(finalEmailMenuAnchor)}
+            onClose={closeFinalEmailMenu}
+          >
+            <MenuItem onClick={() => sendFinalMailWithResult('apto')}>Apto</MenuItem>
+            <MenuItem onClick={() => sendFinalMailWithResult('no_apto')}>No apto</MenuItem>
+          </Menu>
+
+          <Dialog
+            open={Boolean(threeQuartersReview)}
+            onClose={() => sendingMailType === null && setThreeQuartersReview(null)}
+            fullWidth
+            maxWidth='md'
+          >
+            <DialogTitle>Revisar correo del 75 %</DialogTitle>
+            <DialogContent>
+              {threeQuartersReview ? (
+                <Grid container spacing={4} sx={{ pt: 1 }}>
+                  {[
+                    ['Horas', threeQuartersReview.performedHours, threeQuartersReview.totalHours],
+                    ['Unidades', threeQuartersReview.performedUnits, threeQuartersReview.totalUnits],
+                    ['Evaluaciones', threeQuartersReview.performedActivities, threeQuartersReview.totalActivities],
+                    [
+                      'Evaluación final',
+                      threeQuartersReview.performedFinalEvaluation,
+                      threeQuartersReview.totalFinalEvaluations
+                    ]
+                  ].map(([label, performed, total]) => (
+                    <Grid item xs={12} sm={6} md={3} key={String(label)}>
+                      <Box sx={{ p: 3, border: theme => `1px solid ${theme.palette.divider}`, borderRadius: 1 }}>
+                        <Typography variant='body2' color='text.secondary'>{String(label)}</Typography>
+                        <Typography variant='h6'>
+                          {performed === null ? '-' : formatAmount(Number(performed))} /{' '}
+                          {total === null ? '-' : formatAmount(Number(total))}
+                        </Typography>
+                      </Box>
+                    </Grid>
+                  ))}
+
+                  <Grid item xs={12}>
+                    <Box sx={{ px: 3, py: 2, bgcolor: 'action.hover', borderRadius: 1 }}>
+                      <Typography variant='body2' color='text.secondary'>Caso detectado</Typography>
+                      <Typography variant='subtitle1'>{threeQuartersReview.scenarioLabel}</Typography>
+                    </Box>
+                  </Grid>
+
+                  <Grid item xs={12}>
+                    <CustomTextField
+                      fullWidth
+                      label='Asunto'
+                      value={threeQuartersReview.subject}
+                      onChange={event => setThreeQuartersReview(current => current
+                        ? { ...current, subject: event.target.value }
+                        : current
+                      )}
+                    />
+                  </Grid>
+
+                  <Grid item xs={12}>
+                    <Typography variant='subtitle2' sx={{ mb: 2 }}>Mensaje editable</Typography>
+                    <Box
+                      ref={threeQuartersBodyEditorRef}
+                      contentEditable
+                      suppressContentEditableWarning
+                      dangerouslySetInnerHTML={{ __html: threeQuartersReview.bodyHtml }}
+                      sx={{
+                        minHeight: 280,
+                        p: 3,
+                        border: theme => `1px solid ${theme.palette.divider}`,
+                        borderRadius: 1,
+                        bgcolor: 'background.paper',
+                        outline: 'none',
+                        '&:focus': { borderColor: 'primary.main' }
+                      }}
+                    />
+                  </Grid>
+                </Grid>
+              ) : null}
+            </DialogContent>
+            <DialogActions>
+              <Button
+                onClick={() => setThreeQuartersReview(null)}
+                disabled={sendingMailType === 'three_quarters'}
+              >
+                Cancelar
+              </Button>
+              <Button
+                variant='contained'
+                onClick={sendReviewedThreeQuartersMail}
+                disabled={sendingMailType === 'three_quarters' || !threeQuartersReview?.subject.trim()}
+                startIcon={sendingMailType === 'three_quarters' ? <CircularProgress size={18} /> : undefined}
+              >
+                {sendingMailType === 'three_quarters' ? 'Enviando...' : 'Confirmar y enviar'}
+              </Button>
+            </DialogActions>
+          </Dialog>
+
+          <Dialog
+            open={Boolean(emailReview)}
+            onClose={() => sendingMailType === null && setEmailReview(null)}
+            fullWidth
+            maxWidth='md'
+          >
+            <DialogTitle>{emailReview?.title ?? 'Revisar correo'}</DialogTitle>
+            <DialogContent>
+              {emailReview ? (
+                <Box sx={{ pt: 1 }}>
+                  <CustomTextField
+                    fullWidth
+                    label='Asunto'
+                    value={emailReview.subject}
+                    onChange={event => setEmailReview(current => current
+                      ? { ...current, subject: event.target.value }
+                      : current
+                    )}
+                    sx={{ mb: 4 }}
+                  />
+                  <Typography variant='body2' color='text.secondary' sx={{ mb: 2 }}>Mensaje editable</Typography>
+                  <Box
+                    ref={emailBodyEditorRef}
+                    contentEditable
+                    suppressContentEditableWarning
+                    dangerouslySetInnerHTML={{ __html: emailReview.bodyHtml }}
+                    sx={{
+                      minHeight: 430,
+                      p: 3,
+                      border: theme => `1px solid ${theme.palette.divider}`,
+                      borderRadius: 1,
+                      bgcolor: 'background.paper',
+                      outline: 'none',
+                      '&:focus': { borderColor: 'primary.main' }
+                    }}
+                  />
+                </Box>
+              ) : null}
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setEmailReview(null)} disabled={sendingMailType !== null}>
+                Cancelar
+              </Button>
+              <Button
+                variant='contained'
+                onClick={sendReviewedMail}
+                disabled={sendingMailType !== null || !emailReview?.subject.trim()}
+                startIcon={sendingMailType !== null ? <CircularProgress size={18} /> : undefined}
+              >
+                {sendingMailType !== null ? 'Enviando...' : 'Confirmar y enviar'}
+              </Button>
+            </DialogActions>
+          </Dialog>
+        </Box>
+
         <Grid container spacing={5}>
           {/* Base dates (NO edit) + sent dates (EDIT) + checks */}
 
           {/* Bienvenida */}
-          <Grid item xs={12} md={6}>
+          <Grid item xs={12} md={4}>
             <Controller
               name='welcome_date'
               control={control}
@@ -747,7 +1378,7 @@ const TracingsGeneralTab: React.FC<TracingsGeneralTabProps> = ({ open, mode, tra
             />
           </Grid>
 
-          <Grid item xs={12} md={6}>
+          <Grid item xs={12} md={4}>
             <Controller
               name='welcome_date_sent'
               control={control}
@@ -771,7 +1402,7 @@ const TracingsGeneralTab: React.FC<TracingsGeneralTabProps> = ({ open, mode, tra
           </Grid>
 
           {/* 25% */}
-          <Grid item xs={12} md={6}>
+          <Grid item xs={12} md={4}>
             <Controller
               name='quarter_date'
               control={control}
@@ -781,7 +1412,7 @@ const TracingsGeneralTab: React.FC<TracingsGeneralTabProps> = ({ open, mode, tra
             />
           </Grid>
 
-          <Grid item xs={12} md={6}>
+          <Grid item xs={12} md={4}>
             <Controller
               name='quarter_date_sent'
               control={control}
@@ -805,7 +1436,7 @@ const TracingsGeneralTab: React.FC<TracingsGeneralTabProps> = ({ open, mode, tra
           </Grid>
 
           {/* 50% */}
-          <Grid item xs={12} md={6}>
+          <Grid item xs={12} md={4}>
             <Controller
               name='half_date'
               control={control}
@@ -815,7 +1446,7 @@ const TracingsGeneralTab: React.FC<TracingsGeneralTabProps> = ({ open, mode, tra
             />
           </Grid>
 
-          <Grid item xs={12} md={6}>
+          <Grid item xs={12} md={4}>
             <Controller
               name='half_date_sent'
               control={control}
@@ -839,7 +1470,7 @@ const TracingsGeneralTab: React.FC<TracingsGeneralTabProps> = ({ open, mode, tra
           </Grid>
 
           {/* 75% */}
-          <Grid item xs={12} md={6}>
+          <Grid item xs={12} md={4}>
             <Controller
               name='three_quarters_date'
               control={control}
@@ -849,7 +1480,7 @@ const TracingsGeneralTab: React.FC<TracingsGeneralTabProps> = ({ open, mode, tra
             />
           </Grid>
 
-          <Grid item xs={12} md={6}>
+          <Grid item xs={12} md={4}>
             <Controller
               name='three_quarters_date_sent'
               control={control}
@@ -873,7 +1504,7 @@ const TracingsGeneralTab: React.FC<TracingsGeneralTabProps> = ({ open, mode, tra
           </Grid>
 
           {/* Final */}
-          <Grid item xs={12} md={6}>
+          <Grid item xs={12} md={4}>
             <Controller
               name='final_date'
               control={control}
@@ -883,7 +1514,7 @@ const TracingsGeneralTab: React.FC<TracingsGeneralTabProps> = ({ open, mode, tra
             />
           </Grid>
 
-          <Grid item xs={12} md={6}>
+          <Grid item xs={12} md={4}>
             <Controller
               name='final_date_sent'
               control={control}

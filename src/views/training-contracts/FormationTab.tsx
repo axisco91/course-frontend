@@ -497,7 +497,8 @@ const TrainingContractFormationTab: React.FC<{ open: boolean }> = ({ open }) => 
           return
         }
         toast.success('Curso creado')
-        dispatch(trainingContractActions.replaceElement(response.data.element))
+        const element = response.data?.data?.element ?? response.data?.element
+        dispatch(trainingContractActions.replaceElement(element))
       } catch (e) {
         handleErrorRef.current(e, logoutRef.current)
         toast.error('No se pudo crear')

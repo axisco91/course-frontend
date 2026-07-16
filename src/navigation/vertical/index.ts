@@ -210,7 +210,13 @@ const navigation = (userPermissions: string[], menuUIData: Menu[]): VerticalNavI
               title: 'Access Logs',
               path: '/general-settings/access-logs',
               subject: 'access-logs-page',
-              requiredPermissions: ['global.generalSettings.index']
+              requiredPermissions: ['read.management']
+            },
+            {
+              title: 'Email Logs',
+              path: '/general-settings/email-logs',
+              subject: 'email-logs-page',
+              requiredPermissions: ['read.management']
             }
           ]
         },

@@ -281,6 +281,7 @@ export const deleteChore = id => authInstance.delete(`/chores/${id}`)
 export const getTracingsExportExcel = data => authInstanceExport.get('/tracings/export-excel', { params: data })
 export const getTracings = data => authInstance.get('/tracings', { params: data })
 export const getTracing = (id, data) => authInstance.get(`/tracings/${id}`, { params: data })
+export const sendTracingMail = (id, data) => authInstance.post(`/tracings/${id}/send-mail`, data)
 export const editTracing = (id, data) => authInstance.put(`/tracings/${id}`, data)
 export const deleteTracing = id => authInstance.delete(`tracings/${id}`)
 
@@ -761,3 +762,8 @@ export const getMainCompanyBasic = data => instance.get('/main-companies/basic',
 
 export const getCompanySettings = () => instance.get(`companies/settings`)
 export const getCompanySetting = (companyId, key) => authInstance.get(`companies/${companyId}/settings/${key}`)
+export const getEmailLogs = data => authInstance.get('/email-logs', { params: data })
+export const resendEmailLog = id => authInstance.post(`/email-logs/${id}/resend`)
+export const getEmailTemplates = () => authInstance.get('/email-templates')
+export const saveEmailTemplate = (type, data) => authInstance.put(`/email-templates/${type}`, data)
+export const resetEmailTemplate = type => authInstance.delete(`/email-templates/${type}`)

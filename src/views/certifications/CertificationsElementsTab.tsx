@@ -308,11 +308,11 @@ const CertificationsElementsTab = ({ open, certificationId, readOnly }: Certific
               columns={columns as any}
               getRowId={row => row.id ?? row.value}
               loading={loading}
-              pageSizeOptions={[25, 50, 100]}
+              pageSizeOptions={[10, 25, 50, 100]}
               initialState={{
                 pagination: {
                   paginationModel: {
-                    pageSize: 25,
+                    pageSize: 10,
                     page: 0
                   }
                 }

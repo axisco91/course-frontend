@@ -28,7 +28,7 @@ const EmailLogsTable = () => {
   const [total, setTotal] = useState(0)
   const [sort, setSort] = useState<SortType>('desc')
   const [sortColumn, setSortColumn] = useState('created_at')
-  const [paginationModel, setPaginationModel] = useState({ page: 0, pageSize: 25 })
+  const [paginationModel, setPaginationModel] = useState({ page: 0, pageSize: 10 })
   const [searchValue, setSearchValue] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [mailTypeFilter, setMailTypeFilter] = useState('')
@@ -261,7 +261,7 @@ const EmailLogsTable = () => {
             sortingMode='server'
             sortModel={[{ field: sortColumn, sort: sort ?? 'desc' }]}
             paginationMode='server'
-            pageSizeOptions={[25, 50, 100]}
+            pageSizeOptions={[10, 25, 50, 100]}
             paginationModel={paginationModel}
             onSortModelChange={handleSortModel}
             onPaginationModelChange={setPaginationModel}

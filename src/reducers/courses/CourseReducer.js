@@ -4,6 +4,8 @@ export const initialFilters = {
   formative_action: '',
   name: '',
   group: '',
+  start_date: '',
+  end_date: '',
   modality: null, // modality_id
   type: null, // course_type_id
   status: null, // course_status_id

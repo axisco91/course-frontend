@@ -1034,7 +1034,7 @@ const TrainingContractFormationTab: React.FC<{ open: boolean }> = ({ open }) => 
                 disableRowSelectionOnClick
                 rows={examsTutorials}
                 columns={examColumns as any}
-                pageSizeOptions={[5, 10, 25]}
+                pageSizeOptions={[10, 25, 50, 100]}
                 initialState={{ pagination: { paginationModel: { page: 0, pageSize: 10 } } }}
                 onRowClick={p => handleRowClicked(p.row)}
                 getRowId={row => row.id}

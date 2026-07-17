@@ -1,6 +1,7 @@
-import React, { ReactElement, Ref, forwardRef, useCallback, useEffect, useState } from 'react'
+import React, { ReactElement, Ref, forwardRef, useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Box,
+  Chip,
   Dialog,
   DialogContent,
   Fade,
@@ -21,6 +22,7 @@ import { useTranslation } from 'react-i18next'
 // ✅ Usa tus componentes reales de Course
 import CoursesGeneralTab from './CoursesGeneralTab'
 import CoursesStudentsTable from './CoursesStudentsTable'
+import TracingsTable from '../tracings/TracingsTable'
 
 type Mode = 'view' | 'edit' | 'create'
 
@@ -67,9 +69,15 @@ const CoursesModel: React.FC<CoursesModalProps> = ({ open, onClose, mode, course
   const { t } = useTranslation()
   const [tab, setTab] = useState(0)
   const [courseName, setCourseName] = useState('')
+  const [selectedTracingStudent, setSelectedTracingStudent] = useState<{
+    id: number
+    name?: string
+    surname?: string
+  } | null>(null)
 
   const userPermissions = useSelector((state: RootState) => state.auth.permissions)
   const canUpdate = Array.isArray(userPermissions) && userPermissions.includes('edit.courses')
+  const canReadTracings = Array.isArray(userPermissions) && userPermissions.includes('read.tracings')
 
   const [modeUi, setModeUi] = useState<Mode>(mode)
 
@@ -82,6 +90,7 @@ const CoursesModel: React.FC<CoursesModalProps> = ({ open, onClose, mode, course
     if (!open) return
     setTab(0)
     setCourseName('')
+    setSelectedTracingStudent(null)
   }, [open, courseId])
 
   // sync mode
@@ -106,15 +115,24 @@ const CoursesModel: React.FC<CoursesModalProps> = ({ open, onClose, mode, course
   // si tab Students no disponible, fuerza tab General
   useEffect(() => {
     if (!open) return
-    if (!studentsEnabled && tab === 1) setTab(0)
-  }, [open, studentsEnabled, tab])
+    if ((!studentsEnabled && tab === 1) || (!canReadTracings && tab === 2)) setTab(0)
+  }, [open, studentsEnabled, canReadTracings, tab])
 
   const effectiveMode: Mode = isCreate ? 'create' : canUpdate ? modeUi : 'view'
 
   const handleLoaded = useCallback((c: any) => {
     // ✅ Course title
-    setCourseName(`${c?.name ?? ''}`.trim())
+    const trainingAction = c?.training_action ?? c?.trainingAction
+    const actionAndGroup = [trainingAction?.formative_action, c?.group].filter(Boolean).join('/')
+    const title = [actionAndGroup, trainingAction?.name].filter(Boolean).join(' - ')
+
+    setCourseName(title || `${c?.name ?? ''}`.trim())
   }, [])
+
+  const tracingFilters = useMemo(
+    () => ({ course: courseId, student: selectedTracingStudent?.id ?? null }),
+    [courseId, selectedTracingStudent?.id]
+  )
 
   return (
     <Dialog
@@ -137,9 +155,17 @@ const CoursesModel: React.FC<CoursesModalProps> = ({ open, onClose, mode, course
           </Typography>
         </Box>
 
-        <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ borderBottom: 1, borderColor: 'divider' }}>
+        <Tabs
+          value={tab}
+          onChange={(_, v) => {
+            if (v === 2) setSelectedTracingStudent(null)
+            setTab(v)
+          }}
+          sx={{ borderBottom: 1, borderColor: 'divider' }}
+        >
           <Tab label={t('General')} />
           <Tab label={t('Students')} disabled={!studentsEnabled} />
+          {canReadTracings && <Tab label={t('Tracings')} disabled={!studentsEnabled} />}
         </Tabs>
 
         {/* ✅ Toggle SOLO en General y NO en create */}
@@ -172,8 +198,41 @@ const CoursesModel: React.FC<CoursesModalProps> = ({ open, onClose, mode, course
         </TabPanel>
 
         <TabPanel value={tab} index={1}>
-          {open && studentsEnabled && tab === 1 && <CoursesStudentsTable open={open} courseId={courseId} />}
+          {open && studentsEnabled && tab === 1 && (
+            <CoursesStudentsTable
+              open={open}
+              courseId={courseId}
+              onViewTracings={student => {
+                setSelectedTracingStudent(student)
+                setTab(2)
+              }}
+            />
+          )}
         </TabPanel>
+
+        {canReadTracings && (
+          <TabPanel value={tab} index={2}>
+            {selectedTracingStudent && (
+              <Box sx={{ mb: 3 }}>
+                <Chip
+                  color='primary'
+                  label={`${t('Student')}: ${selectedTracingStudent.name ?? ''} ${
+                    selectedTracingStudent.surname ?? ''
+                  }`.trim()}
+                  onDelete={() => setSelectedTracingStudent(null)}
+                />
+              </Box>
+            )}
+            {open && studentsEnabled && tab === 2 && (
+              <TracingsTable
+                active={tab === 2}
+                fixedFilters={tracingFilters}
+                useGlobalFilters={false}
+                hideCourseColumn
+              />
+            )}
+          </TabPanel>
+        )}
       </DialogContent>
     </Dialog>
   )

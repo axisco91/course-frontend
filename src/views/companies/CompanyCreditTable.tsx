@@ -72,7 +72,7 @@ const CompanyCreditsTable = ({ open, companyId }: Props) => {
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(false)
 
-  const [paginationModel, setPaginationModel] = useState({ page: 0, pageSize: 25 })
+  const [paginationModel, setPaginationModel] = useState({ page: 0, pageSize: 10 })
   const [sortModel, setSortModel] = useState<GridSortModel>([{ field: 'year', sort: 'desc' }])
 
   const reqIdRef = useRef(0)

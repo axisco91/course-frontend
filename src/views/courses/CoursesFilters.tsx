@@ -169,6 +169,30 @@ const CoursesFilters = () => {
           />
         </Grid>
 
+        <Grid item xs={12} md={4}>
+          <CustomTextField
+            fullWidth
+            type='date'
+            label={t('Start date')}
+            value={filters.start_date ?? ''}
+            inputProps={{ max: filters.end_date || undefined }}
+            InputLabelProps={{ shrink: true }}
+            onChange={e => setFilter('start_date', e.target.value)}
+          />
+        </Grid>
+
+        <Grid item xs={12} md={4}>
+          <CustomTextField
+            fullWidth
+            type='date'
+            label={t('End date')}
+            value={filters.end_date ?? ''}
+            inputProps={{ min: filters.start_date || undefined }}
+            InputLabelProps={{ shrink: true }}
+            onChange={e => setFilter('end_date', e.target.value)}
+          />
+        </Grid>
+
         {/* Tipo */}
         <Grid item xs={12} md={4}>
           <Autocomplete

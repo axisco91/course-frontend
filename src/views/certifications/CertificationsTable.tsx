@@ -174,7 +174,7 @@ const CertificationsTable = () => {
   const [total, setTotal] = useState<number>(0)
   const [sort, setSort] = useState<SortType>('asc')
   const [sortColumn, setSortColumn] = useState<string>('name')
-  const [paginationModel, setPaginationModel] = useState({ page: 0, pageSize: 25 })
+  const [paginationModel, setPaginationModel] = useState({ page: 0, pageSize: 10 })
   const [loading, setLoading] = useState<boolean>(false)
 
   const fetchTableData = useCallback(async () => {
@@ -244,7 +244,7 @@ const CertificationsTable = () => {
               sortingOrder={['asc', 'desc']}
               sortModel={[{ field: sortColumn, sort: sort ?? 'asc' }]}
               paginationMode='server'
-              pageSizeOptions={[25, 50, 100]}
+              pageSizeOptions={[10, 25, 50, 100]}
               paginationModel={paginationModel}
               onSortModelChange={handleSortModel}
               onPaginationModelChange={setPaginationModel}

@@ -33,6 +33,15 @@ import { companyActions } from 'src/reducers/company/CompanyReducer'
 
 type SortType = 'asc' | 'desc' | undefined | null
 
+type TracingsTableProps = {
+  fixedFilters?: Record<string, string | number | null | undefined>
+  useGlobalFilters?: boolean
+  active?: boolean
+  hideCourseColumn?: boolean
+}
+
+const EMPTY_FILTERS: Record<string, string | number | null | undefined> = {}
+
 const yesNoChip = (value: any, t: any) => {
   const v = String(value ?? '0')
   const isYes = v === '1' || v === 'true'
@@ -57,7 +66,12 @@ const formatDateDDMMYYYY = (raw: any) => {
   return `${d}/${m}/${y}`
 }
 
-const TracingsTable = () => {
+const TracingsTable = ({
+  fixedFilters = EMPTY_FILTERS,
+  useGlobalFilters = true,
+  active = true,
+  hideCourseColumn = false
+}: TracingsTableProps) => {
   const { t } = useTranslation()
   const dispatch = useDispatch()
   const { handleError } = useErrorHandler()
@@ -88,7 +102,7 @@ const TracingsTable = () => {
     if (el && typeof el.blur === 'function') el.blur()
   }
 
-  const columns = useMemo(
+  const allColumns = useMemo(
     () => [
       {
         flex: 0.28,
@@ -96,15 +110,21 @@ const TracingsTable = () => {
         field: 'course',
         headerName: t('Course'),
         headerAlign: 'center',
-        renderCell: (params: GridRenderCellParams) => (
-          <Typography noWrap variant='body2' sx={{ color: 'text.primary', fontWeight: 600 }}>
-            {params.row?.course_label ??
-              params.row?.course_name ??
-              params.row?.course?.name ??
-              params.row?.course ??
-              ''}
-          </Typography>
-        )
+        renderCell: (params: GridRenderCellParams) => {
+          const course = params.row?.course
+          const trainingAction = course?.training_action ?? course?.trainingAction
+          const formativeArea = trainingAction?.formative_action ?? ''
+          const group = course?.group ?? ''
+          const courseName = trainingAction?.name ?? course?.name ?? ''
+          const actionAndGroup = [formativeArea, group].filter(Boolean).join('/')
+          const courseLabel = [actionAndGroup, courseName].filter(Boolean).join(' - ')
+
+          return (
+            <Typography noWrap variant='body2' sx={{ color: 'text.primary', fontWeight: 600 }}>
+              {courseLabel || params.row?.course_label || params.row?.course_name || course || ''}
+            </Typography>
+          )
+        }
       },
       {
         flex: 0.24,
@@ -139,6 +159,7 @@ const TracingsTable = () => {
           )
         }
       },
+      // Student column is optional, because in some cases it is already includded
       {
         flex: 0.18,
         minWidth: 350,
@@ -360,14 +381,27 @@ const TracingsTable = () => {
     [t, canUpdate, canEliminate, canReadStudents, canReadCompanies, dispatch]
   )
 
+  const columns = useMemo(
+    () => (hideCourseColumn ? allColumns.filter(column => column.field !== 'course') : allColumns),
+    [allColumns, hideCourseColumn]
+  )
+
   const [total, setTotal] = useState<number>(0)
   const [sort, setSort] = useState<SortType>('asc')
   const [rows, setRows] = useState<any[]>([])
   const [sortColumn, setSortColumn] = useState<string>('course')
-  const [paginationModel, setPaginationModel] = useState({ page: 0, pageSize: 25 })
+  const [paginationModel, setPaginationModel] = useState({ page: 0, pageSize: 10 })
   const [loading, setLoading] = useState<boolean>(false)
+  const requestIdRef = useRef(0)
+
+  const requestFilters = useMemo(
+    () => ({ ...(useGlobalFilters ? appliedFilters : {}), ...fixedFilters }),
+    [appliedFilters, fixedFilters, useGlobalFilters]
+  )
 
   const fetchTableData = useCallback(async () => {
+    if (!active) return
+    const requestId = ++requestIdRef.current
     setLoading(true)
     try {
       const current = paginationModel.page + 1
@@ -377,17 +411,23 @@ const TracingsTable = () => {
         perPage: paginationModel.pageSize,
         page: current,
         sort: sortTable,
-        ...appliedFilters
+        ...requestFilters
       })
 
-      setTotal(res.data?.data?.meta?.total ?? 0)
-      setRows(res.data?.data?.tracings ?? res.data?.data?.data ?? [])
+      if (requestId === requestIdRef.current) {
+        setTotal(res.data?.data?.meta?.total ?? 0)
+        setRows(res.data?.data?.tracings ?? res.data?.data?.data ?? [])
+      }
     } catch (error) {
-      handleErrorRef.current(error, logoutRef.current)
+      if (requestId === requestIdRef.current) handleErrorRef.current(error, logoutRef.current)
     } finally {
-      setLoading(false)
+      if (requestId === requestIdRef.current) setLoading(false)
     }
-  }, [paginationModel.page, paginationModel.pageSize, sort, sortColumn, appliedFilters])
+  }, [active, paginationModel.page, paginationModel.pageSize, sort, sortColumn, requestFilters])
+
+  useEffect(() => {
+    setPaginationModel(previous => (previous.page === 0 ? previous : { ...previous, page: 0 }))
+  }, [requestFilters])
 
   useEffect(() => {
     fetchTableData()
@@ -429,7 +469,7 @@ const TracingsTable = () => {
               sortingOrder={['asc', 'desc']}
               sortModel={[{ field: sortColumn, sort: sort ?? 'asc' }]}
               paginationMode='server'
-              pageSizeOptions={[25, 50, 100]}
+              pageSizeOptions={[10, 25, 50, 100]}
               paginationModel={paginationModel}
               onSortModelChange={handleSortModel}
               onPaginationModelChange={setPaginationModel}

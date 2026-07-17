@@ -342,11 +342,11 @@ const ModulesUnitsTab = ({ open, moduleId, readOnly }: ModulesUnitsTabProps) => 
             columns={columns as any}
             getRowId={row => row.module_unit_id ?? row.id ?? row.training_unit_id ?? row?.training_unit?.id ?? row?.unit?.id ?? row.value}
             loading={loading}
-            pageSizeOptions={[25, 50, 100]}
+            pageSizeOptions={[10, 25, 50, 100]}
             initialState={{
               pagination: {
                 paginationModel: {
-                  pageSize: 25,
+                  pageSize: 10,
                   page: 0
                 }
               }

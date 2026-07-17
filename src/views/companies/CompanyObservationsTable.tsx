@@ -69,7 +69,7 @@ const CompanyObservationsTable = ({ open, companyId }: Props) => {
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(false)
 
-  const [paginationModel, setPaginationModel] = useState({ page: 0, pageSize: 25 })
+  const [paginationModel, setPaginationModel] = useState({ page: 0, pageSize: 10 })
   const [sortModel, setSortModel] = useState<GridSortModel>([{ field: 'date', sort: 'desc' }])
 
   const reqIdRef = useRef(0)
@@ -201,7 +201,7 @@ const CompanyObservationsTable = ({ open, companyId }: Props) => {
             loading={loading}
             paginationMode='server'
             sortingMode='server'
-            pageSizeOptions={[25, 50, 100]}
+            pageSizeOptions={[10, 25, 50, 100]}
             paginationModel={paginationModel}
             onPaginationModelChange={model => setPaginationModel(model)}
             sortModel={sortModel}

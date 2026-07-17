@@ -203,7 +203,7 @@ const AccessLogsTable = () => {
   const [rows, setRows] = useState<WorkerType[]>([])
   const [searchValue, setSearchValue] = useState<string>('')
   const [sortColumn, setSortColumn] = useState<string>('date')
-  const [paginationModel, setPaginationModel] = useState({ page: 0, pageSize: 25 })
+  const [paginationModel, setPaginationModel] = useState({ page: 0, pageSize: 10 })
   const [filterButtonClickCount, setFilterButtonClickCount] = useState(0)
 
   const fetchTableData = useCallback(
@@ -283,7 +283,7 @@ const AccessLogsTable = () => {
             sortingMode='server'
             sortModel={[{ field: sortColumn, sort: sort ?? 'asc' }]}
             paginationMode='server'
-            pageSizeOptions={[25, 50, 100]}
+            pageSizeOptions={[10, 25, 50, 100]}
             paginationModel={paginationModel}
             onSortModelChange={handleSortModel}
             onPaginationModelChange={setPaginationModel}

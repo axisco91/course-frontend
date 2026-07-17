@@ -17,10 +17,11 @@ import { getBillsExportExcel, getBillsMinYear } from 'src/api/api'
 import { useErrorHandler } from 'src/hooks/useErrorHandler'
 import { AuthContext } from 'src/context/AuthContext'
 
-type Option = { id: number; name: string }
+type Option = { id: number; name: string; display_name?: string; group?: string }
 type YearOption = { id: number; name: string }
 
-const getCourseOptionLabel = (option: any) => option?.name ?? option?.label ?? ''
+const getCourseOptionLabel = (option: any) =>
+  option?.display_name ?? option?.course_display_name ?? option?.label ?? option?.name ?? ''
 
 const buildBillRequestFilters = (filters: any) => {
   const { course, course_text, ...rest } = filters ?? {}

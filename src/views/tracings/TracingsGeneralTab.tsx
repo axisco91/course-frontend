@@ -97,6 +97,11 @@ const tracingResultOptions = [
   { value: 2, label: 'No realizado' }
 ]
 
+const suitabilityOptions = [
+  { value: 'apto', label: 'Apto' },
+  { value: 'no_apto', label: 'No apto' }
+]
+
 const escapeHtml = (value: unknown) =>
   String(value ?? '')
     .replace(/&/g, '&amp;')
@@ -107,6 +112,24 @@ const escapeHtml = (value: unknown) =>
 
 const replaceTemplateVariables = (template: string, variables: Record<string, unknown>) =>
   template.replace(/\{\{\s*([a-z_]+)\s*\}\}/gi, (_match, key) => escapeHtml(variables[key] ?? ''))
+
+const getMilestoneTiming = (value: unknown) => {
+  const milestoneDate = parseDatePickerValue(value)
+  if (!milestoneDate) return 'hoy'
+
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+
+  return milestoneDate > today ? 'en los próximos días' : 'hoy'
+}
+
+const renderEmailBody = (template: string, variables: Record<string, unknown>) => {
+  const rendered = replaceTemplateVariables(template, variables)
+
+  return variables.milestone_timing !== 'hoy'
+    ? rendered.replace(/\bhoy\b/giu, String(variables.milestone_timing))
+    : rendered
+}
 
 const numericValue = (value: unknown) => {
   if (value === null || value === undefined || value === '') return null
@@ -206,6 +229,7 @@ type FormValues = {
 
   // other
   follow_up_date: string
+  suitability: string
   final_test: number | string
   questionnaire: number | string
   observation: string
@@ -332,6 +356,7 @@ const TracingsGeneralTab: React.FC<TracingsGeneralTabProps> = ({ open, mode, tra
       one_week_message: false,
 
       follow_up_date: '',
+      suitability: '',
       final_test: '',
       questionnaire: '',
       observation: ''
@@ -502,6 +527,7 @@ const TracingsGeneralTab: React.FC<TracingsGeneralTabProps> = ({ open, mode, tra
           one_week_message: String(tr.one_week_message ?? '0') === '1',
 
           follow_up_date: toInputDate(tr.follow_up_date),
+          suitability: tr.suitability ?? '',
           final_test: tr.final_test ?? '',
           questionnaire: tr.questionnaire ?? '',
           observation: tr.observation ?? ''
@@ -548,6 +574,7 @@ const TracingsGeneralTab: React.FC<TracingsGeneralTabProps> = ({ open, mode, tra
 
       // follow up + forms
       formData.append('follow_up_date', toApiDate(data.follow_up_date))
+      formData.append('suitability', data.suitability ?? '')
       formData.append('final_test', data.final_test ?? '')
       formData.append('questionnaire', data.questionnaire ?? '')
 
@@ -689,6 +716,14 @@ const TracingsGeneralTab: React.FC<TracingsGeneralTabProps> = ({ open, mode, tra
         || 'Tutor/a del curso'
       )
       const isNotSuitable = extraData.final_result === 'no_apto'
+      const milestoneDate = type === 'quarter'
+        ? tr.course?.quarter_date
+        : type === 'half'
+          ? tr.course?.half_date
+          : type === 'final'
+            ? tr.course?.final_date
+            : null
+      const milestoneTiming = getMilestoneTiming(milestoneDate)
       const previewVariables = {
         student_name: [tr.student?.name, tr.student?.surname].filter(Boolean).join(' '),
         formative_action: formativeAction,
@@ -701,9 +736,10 @@ const TracingsGeneralTab: React.FC<TracingsGeneralTabProps> = ({ open, mode, tra
         milestone_date: type === 'quarter'
           ? toDisplayDate(tr.course?.quarter_date ?? '')
           : toDisplayDate(tr.course?.half_date ?? ''),
+        milestone_timing: milestoneTiming,
         final_result: isNotSuitable ? 'NO APTO' : 'APTO',
         final_intro: isNotSuitable
-          ? 'Le informamos de que el curso finaliza hoy y, tras revisar su actividad en la plataforma, su calificación final es de NO APTO.'
+          ? `Le informamos de que el curso finaliza ${milestoneTiming} y, tras revisar su actividad en la plataforma, su calificación final es de NO APTO.`
           : 'Te informamos de que has obtenido la calificación de APTO en el curso.',
         final_detail: isNotSuitable
           ? 'No se han alcanzado los requisitos de conexión, visualización de unidades y realización de evaluaciones establecidos para superar la formación.'
@@ -714,7 +750,7 @@ const TracingsGeneralTab: React.FC<TracingsGeneralTabProps> = ({ open, mode, tra
         type,
         title: titles[type],
         subject: replaceTemplateVariables(template.subject, previewVariables),
-        bodyHtml: replaceTemplateVariables(template.body_html, previewVariables),
+        bodyHtml: renderEmailBody(template.body_html, previewVariables),
         extraData,
       })
     } catch (error) {
@@ -856,6 +892,7 @@ Enhorabuena por el trabajo realizado y mucho ánimo en este último tramo.`
         tutor_name: previewTutorName,
         subject_code: [formativeCode, tr.course?.group].filter(Boolean).join('/'),
         course_end_date: courseEndDate,
+        milestone_timing: getMilestoneTiming(tr.course?.three_quarters_date),
         remaining_hours: totalHours !== null ? formatAmount(Math.max(totalHours - (performedHours ?? 0), 0)) : '-',
         remaining_units: totalUnits !== null ? formatAmount(Math.max(totalUnits - (performedUnits ?? 0), 0)) : '-',
         remaining_activities: totalActivities !== null
@@ -865,7 +902,7 @@ Enhorabuena por el trabajo realizado y mucho ánimo en este último tramo.`
       setThreeQuartersReview({
         scenarioLabel,
         subject: replaceTemplateVariables(template.subject, previewVariables),
-        bodyHtml: replaceTemplateVariables(
+        bodyHtml: renderEmailBody(
           buildThreeQuartersBody(template.body_html, progressMessage),
           previewVariables
         ),
@@ -1537,7 +1574,7 @@ Enhorabuena por el trabajo realizado y mucho ánimo en este último tramo.`
             />
           </Grid>
 
-          {/* Test Final / Cuestionario / Fecha Seguimiento */}
+          {/* Test Final / Cuestionario / Aptitud */}
           <Grid item xs={12} md={4}>
             <Controller
               name='final_test'
@@ -1572,9 +1609,20 @@ Enhorabuena por el trabajo realizado y mucho ánimo en este último tramo.`
 
           <Grid item xs={12} md={4}>
             <Controller
-              name='follow_up_date'
+              name='suitability'
               control={control}
-              render={({ field }) => renderDatePicker(field, 'Follow-up date')}
+              render={({ field }) => (
+                <CustomTextField select fullWidth label='Apto o no apto' {...field} disabled={!canEdit}>
+                  <MenuItem value=''>
+                    <em>{t('Not specified')}</em>
+                  </MenuItem>
+                  {suitabilityOptions.map(opt => (
+                    <MenuItem key={opt.value} value={opt.value}>
+                      {t(opt.label)}
+                    </MenuItem>
+                  ))}
+                </CustomTextField>
+              )}
             />
           </Grid>
 
@@ -1601,6 +1649,14 @@ Enhorabuena por el trabajo realizado y mucho ánimo en este último tramo.`
                   )}
                 />
               )}
+            />
+          </Grid>
+
+          <Grid item xs={12} md={6}>
+            <Controller
+              name='follow_up_date'
+              control={control}
+              render={({ field }) => renderDatePicker(field, 'Follow-up date')}
             />
           </Grid>
 

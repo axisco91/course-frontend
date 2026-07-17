@@ -26,11 +26,20 @@ import { courseActions } from 'src/reducers/courses/CourseReducer'
 
 type Mode = 'view' | 'edit' | 'create'
 type TranslationFunction = (key: string) => string
-type List = { id: number; name: string }
+type List = { id: number; name: string; surname?: string }
+
+const teacherLabel = (teacher: List | null | undefined) =>
+  [teacher?.name, teacher?.surname].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim()
 
 const renderListOption = (props: React.HTMLAttributes<HTMLLIElement>, option: List) => (
   <li {...props} key={option.id}>
     {option.name}
+  </li>
+)
+
+const renderTeacherOption = (props: React.HTMLAttributes<HTMLLIElement>, option: List) => (
+  <li {...props} key={option.id}>
+    {teacherLabel(option)}
   </li>
 )
 
@@ -135,6 +144,7 @@ type FormValues = {
   group: string
   course_type: List | null
   teacher: List | null
+  web_platform: List | null
 
   nebrija: boolean
 
@@ -193,6 +203,7 @@ const CoursesGeneralTab: React.FC<CoursesGeneralTabProps> = ({ open, mode, cours
   const trainingActions = useSelector((s: RootState) => s.trainingAction.trainingActions) as List[]
   const courseTypes = useSelector((s: RootState) => s.courseType.courseTypes) as List[]
   const teachers = useSelector((s: RootState) => s.teacher.teachers) as List[]
+  const webPlatforms = useSelector((s: RootState) => s.webPlatform.webPlatforms) as List[]
   const formationCenters = useSelector((s: RootState) => s.center.centers) as List[]
   const deliveryCenters = useSelector((s: RootState) => s.center.centers) as List[]
   const courseStatuses = useSelector((s: RootState) => s.courseStatus.courseStatuses) as List[]
@@ -203,6 +214,7 @@ const CoursesGeneralTab: React.FC<CoursesGeneralTabProps> = ({ open, mode, cours
   const trainingActionsList = useMemo(() => (Array.isArray(trainingActions) ? trainingActions : []), [trainingActions])
   const courseTypesList = useMemo(() => (Array.isArray(courseTypes) ? courseTypes : []), [courseTypes])
   const teachersList = useMemo(() => (Array.isArray(teachers) ? teachers : []), [teachers])
+  const webPlatformsList = useMemo(() => (Array.isArray(webPlatforms) ? webPlatforms : []), [webPlatforms])
   const formationCentersList = useMemo(
     () => (Array.isArray(formationCenters) ? formationCenters : []),
     [formationCenters]
@@ -232,6 +244,7 @@ const CoursesGeneralTab: React.FC<CoursesGeneralTabProps> = ({ open, mode, cours
       group: '',
       course_type: null,
       teacher: null,
+      web_platform: null,
 
       nebrija: false,
 
@@ -369,6 +382,7 @@ const CoursesGeneralTab: React.FC<CoursesGeneralTabProps> = ({ open, mode, cours
           group: String(c.group ?? ''),
           course_type: pick(courseTypesList, c.course_type_id),
           teacher: pick(teachersList, c.teacher_id),
+          web_platform: pick(webPlatformsList, c.web_platform_id),
 
           nebrija: String(c.nebrija ?? '0') === '1',
 
@@ -438,6 +452,7 @@ const CoursesGeneralTab: React.FC<CoursesGeneralTabProps> = ({ open, mode, cours
 
       formData.append('course_type_id', data.course_type?.id != null ? String(data.course_type.id) : '')
       formData.append('teacher_id', data.teacher?.id != null ? String(data.teacher.id) : '')
+      formData.append('web_platform_id', data.web_platform?.id != null ? String(data.web_platform.id) : '')
 
       formData.append('nebrija', data.nebrija ? '1' : '0')
 
@@ -688,9 +703,9 @@ const CoursesGeneralTab: React.FC<CoursesGeneralTabProps> = ({ open, mode, cours
                   value={field.value}
                   onChange={(_, v) => field.onChange(v)}
                   options={teachersList}
-                  getOptionLabel={o => o?.name ?? ''}
+                  getOptionLabel={teacherLabel}
                   isOptionEqualToValue={(o, v) => o.id === v.id}
-                  renderOption={renderListOption}
+                  renderOption={renderTeacherOption}
                   disabled={disabled}
                   renderInput={params => (
                     <CustomTextField
@@ -701,6 +716,34 @@ const CoursesGeneralTab: React.FC<CoursesGeneralTabProps> = ({ open, mode, cours
                       inputProps={autoCompleteInputProps(params)}
                       error={Boolean(errors.teacher)}
                       helperText={(errors.teacher as any)?.message}
+                    />
+                  )}
+                />
+              )}
+            />
+          </Grid>
+
+          {/* web platform */}
+          <Grid item xs={12} md={4}>
+            <Controller
+              name='web_platform'
+              control={control}
+              render={({ field }) => (
+                <Autocomplete
+                  value={field.value}
+                  onChange={(_, v) => field.onChange(v)}
+                  options={webPlatformsList}
+                  getOptionLabel={o => o?.name ?? ''}
+                  isOptionEqualToValue={(o, v) => o.id === v.id}
+                  renderOption={renderListOption}
+                  disabled={disabled}
+                  renderInput={params => (
+                    <CustomTextField
+                      {...params}
+                      label={t('Web Platform')}
+                      placeholder={t('Web Platform')}
+                      disabled={disabled}
+                      inputProps={autoCompleteInputProps(params)}
                     />
                   )}
                 />

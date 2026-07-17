@@ -149,7 +149,7 @@ const ExcludedDaysTable = () => {
             rows={rows}
             columns={columns as any}
             getRowId={row => row.group}
-            pageSizeOptions={[10, 25, 50]}
+            pageSizeOptions={[10, 25, 50, 100]}
             initialState={{ pagination: { paginationModel: { page: 0, pageSize: 10 } } }}
             loading={loading}
           />

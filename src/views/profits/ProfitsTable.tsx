@@ -136,7 +136,7 @@ const ProfitsTable = () => {
   const [sort, setSort] = useState<SortType>('asc')
 
   const [page, setPage] = useState(0)
-  const [pageSize, setPageSize] = useState(25)
+  const [pageSize, setPageSize] = useState(10)
 
   /* ===================== data ===================== */
 
@@ -304,7 +304,7 @@ const ProfitsTable = () => {
               setPageSize(Number(e.target.value))
               setPage(0)
             }}
-            rowsPerPageOptions={[25, 50, 100]}
+            rowsPerPageOptions={[10, 25, 50, 100]}
           />
         </CardContent>
       </Card>

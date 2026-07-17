@@ -319,7 +319,7 @@ const TrainingContractDocuments = ({ open, trainingContractId: trainingContractI
             columns={columns as any}
             rowCount={total}
             loading={loading}
-            pageSizeOptions={[10, 25, 50]}
+            pageSizeOptions={[10, 25, 50, 100]}
             paginationModel={paginationModel}
             onPaginationModelChange={model => setPaginationModel(model)}
             sortModel={sortModel}

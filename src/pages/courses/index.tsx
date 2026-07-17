@@ -69,6 +69,9 @@ import { companyActivityActions } from 'src/reducers/company/CompanyActivityRedu
 import { companyTypeActions } from 'src/reducers/company/CompanyTypeReducer'
 import { cnaeActions } from 'src/reducers/general/CnaeReducer'
 import { populationActions } from 'src/reducers/general/PopulationReducer'
+import TracingsModal from 'src/views/tracings/TracingsModal'
+import TracingsDelete from 'src/views/tracings/TracingsDelete'
+import { tracingActions } from 'src/reducers/tracings/TracingReducer'
 
 const Courses = () => {
   const hasPermission = useHasPermission(['read.courses'])
@@ -96,6 +99,9 @@ const Courses = () => {
   const advisorModalOpen = useSelector((state: RootState) => state.advisor.modalOpen)
   const advisorModalMode = useSelector((state: RootState) => state.advisor.modalMode)
   const advisorId = useSelector((state: RootState) => state.advisor.id)
+  const tracingModalOpen = useSelector((state: RootState) => state.tracing.modalOpen)
+  const tracingModalMode = useSelector((state: RootState) => state.tracing.modalMode)
+  const tracingId = useSelector((state: RootState) => state.tracing.id)
 
   // ✅ reset UI when entering the page
   useEffect(() => {
@@ -111,6 +117,8 @@ const Courses = () => {
     dispatch(advisorActions.setId(null))
     dispatch(trainingActionActions.closeTrainingActionModal())
     dispatch(trainingActionActions.setId(null))
+    dispatch(tracingActions.closeTracingModal())
+    dispatch(tracingActions.setId(null))
   }, [dispatch])
 
   // ✅ load master data: formative actions + formation centers (active=1)
@@ -232,6 +240,12 @@ const Courses = () => {
                 studentId={studentId}
                 onClose={() => dispatch(studentActions.closeStudentModal())}
               />
+              <TracingsModal
+                open={tracingModalOpen}
+                mode={tracingModalMode}
+                tracingId={tracingId}
+                onClose={() => dispatch(tracingActions.closeTracingModal())}
+              />
               <CompaniesModal
                 open={companyModalOpen}
                 mode={companyModalMode}
@@ -253,6 +267,7 @@ const Courses = () => {
               />
               <CoursesDelete />
               <RegistrationDelete />
+              <TracingsDelete />
               <TrainingActionsModal
                 open={trainingActionModalOpen}
                 mode={trainingActionModalMode}

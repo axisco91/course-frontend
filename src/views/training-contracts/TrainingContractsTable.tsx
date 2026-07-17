@@ -298,7 +298,7 @@ const TrainingContractsTable = () => {
   const [total, setTotal] = useState(0)
   const [sort, setSort] = useState<SortType>('desc')
   const [sortColumn, setSortColumn] = useState('number')
-  const [paginationModel, setPaginationModel] = useState({ page: 0, pageSize: 25 })
+  const [paginationModel, setPaginationModel] = useState({ page: 0, pageSize: 10 })
   const [loading, setLoading] = useState(false)
 
   const fetchTableData = useCallback(async () => {
@@ -357,7 +357,7 @@ const TrainingContractsTable = () => {
             paginationMode='server'
             sortingMode='server'
             sortingOrder={['asc', 'desc']}
-            pageSizeOptions={[25, 50, 100]}
+            pageSizeOptions={[10, 25, 50, 100]}
             paginationModel={paginationModel}
             onPaginationModelChange={setPaginationModel}
             sx={{

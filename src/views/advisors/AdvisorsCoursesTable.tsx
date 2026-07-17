@@ -107,7 +107,7 @@ const AdvisorsCoursesTable = ({ open, advisorId }: Props) => {
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(false)
 
-  const [paginationModel, setPaginationModel] = useState({ page: 0, pageSize: 25 })
+  const [paginationModel, setPaginationModel] = useState({ page: 0, pageSize: 10 })
   const [sortModel, setSortModel] = useState<GridSortModel>([{ field: 'name', sort: 'asc' }])
 
   const reqIdRef = useRef(0)
@@ -162,7 +162,7 @@ const AdvisorsCoursesTable = ({ open, advisorId }: Props) => {
             loading={loading}
             paginationMode='server'
             sortingMode='server'
-            pageSizeOptions={[25, 50, 100]}
+            pageSizeOptions={[10, 25, 50, 100]}
             paginationModel={paginationModel}
             onPaginationModelChange={model => {
               setPaginationModel(prev => (prev.page === model.page && prev.pageSize === model.pageSize ? prev : model))

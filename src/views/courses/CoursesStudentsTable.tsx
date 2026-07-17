@@ -27,9 +27,10 @@ type Props = {
   open: boolean
   courseId: number | null
   active?: boolean
+  onViewTracings?: (student: { id: number; name?: string; surname?: string }) => void
 }
 
-const CoursesStudentsTable = ({ open, courseId, active = true }: Props) => {
+const CoursesStudentsTable = ({ open, courseId, active = true, onViewTracings }: Props) => {
   const { t } = useTranslation()
   const dispatch = useDispatch()
   const { handleError } = useErrorHandler()
@@ -37,6 +38,7 @@ const CoursesStudentsTable = ({ open, courseId, active = true }: Props) => {
 
   const userPermissions = useSelector((state: RootState) => state.auth.permissions) as string[]
   const canViewStudents = Array.isArray(userPermissions) && userPermissions.includes('read.students')
+  const canViewTracings = Array.isArray(userPermissions) && userPermissions.includes('read.tracings')
   const canUpdate = Array.isArray(userPermissions) && userPermissions.includes('edit.courses')
   const canEliminate = Array.isArray(userPermissions) && userPermissions.includes('eliminate.courses')
   const canCreate = Array.isArray(userPermissions) && userPermissions.includes('create.courses')
@@ -126,11 +128,11 @@ const CoursesStudentsTable = ({ open, courseId, active = true }: Props) => {
       }
     ]
 
-    // ✅ actions column (only if permission)
-    if (canViewStudents) {
+    // ✅ actions column (only if at least one action is available)
+    if (canViewStudents || canViewTracings || canUpdate || canEliminate) {
       base.push({
         flex: 0.12,
-        minWidth: 90,
+        minWidth: 140,
         field: 'actions',
         headerName: t('Actions'),
         headerAlign: 'center',
@@ -145,20 +147,40 @@ const CoursesStudentsTable = ({ open, courseId, active = true }: Props) => {
 
           return (
             <Fragment>
-              <Tooltip title={t('View student')} placement='top'>
-                <IconButton
-                  size='small'
-                  onClick={e => {
-                    e.stopPropagation()
-                    blurActiveElement()
-                    if (!studentId) return
-                    dispatch(studentActions.setId(Number(studentId)))
-                    dispatch(studentActions.openStudentModal({ mode: 'view', studentId: Number(studentId) }))
-                  }}
-                >
-                  <Icon icon='tabler:eye' fontSize={20} />
-                </IconButton>
-              </Tooltip>
+              {canViewStudents && (
+                <Tooltip title={t('View student')} placement='top'>
+                  <IconButton
+                    size='small'
+                    onClick={e => {
+                      e.stopPropagation()
+                      blurActiveElement()
+                      if (!studentId) return
+                      dispatch(studentActions.setId(Number(studentId)))
+                      dispatch(studentActions.openStudentModal({ mode: 'view', studentId: Number(studentId) }))
+                    }}
+                  >
+                    <Icon icon='tabler:eye' fontSize={20} />
+                  </IconButton>
+                </Tooltip>
+              )}
+              {canViewTracings && onViewTracings && studentId && (
+                <Tooltip title={t('View tracings')} placement='top'>
+                  <IconButton
+                    size='small'
+                    onClick={e => {
+                      e.stopPropagation()
+                      blurActiveElement()
+                      onViewTracings({
+                        id: Number(studentId),
+                        name: params.row?.name,
+                        surname: params.row?.surname
+                      })
+                    }}
+                  >
+                    <Icon icon='tabler:timeline' fontSize={20} />
+                  </IconButton>
+                </Tooltip>
+              )}
               {canUpdate && (
                 <Tooltip title={t('Edit')} placement='top'>
                   <IconButton
@@ -197,13 +219,13 @@ const CoursesStudentsTable = ({ open, courseId, active = true }: Props) => {
     }
 
     return base
-  }, [t, canViewStudents, dispatch])
+  }, [t, canViewStudents, canViewTracings, canUpdate, canEliminate, dispatch, onViewTracings])
 
   const [rows, setRows] = useState<any[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(false)
 
-  const [paginationModel, setPaginationModel] = useState({ page: 0, pageSize: 25 })
+  const [paginationModel, setPaginationModel] = useState({ page: 0, pageSize: 10 })
   const [sortModel, setSortModel] = useState<GridSortModel>([{ field: 'name', sort: 'asc' }])
 
   const reqIdRef = useRef(0)
@@ -273,7 +295,7 @@ const CoursesStudentsTable = ({ open, courseId, active = true }: Props) => {
             loading={loading}
             paginationMode='server'
             sortingMode='server'
-            pageSizeOptions={[25, 50, 100]}
+            pageSizeOptions={[10, 25, 50, 100]}
             paginationModel={paginationModel}
             onPaginationModelChange={model => {
               setPaginationModel(prev => (prev.page === model.page && prev.pageSize === model.pageSize ? prev : model))

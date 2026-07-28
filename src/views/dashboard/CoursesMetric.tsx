@@ -26,7 +26,7 @@ const getCourseColor = (courseType: string) => {
 
 const CoursesMetric = () => {
   const { t } = useTranslation()
-  const userData = useSelector((s: RootState) => (s as any).auth?.userData) as any
+  const userData = useSelector((s: RootState) => s.auth.user)
 
   const [series, setSeries] = useState<any[]>([])
   const [options, setOptions] = useState<ApexOptions>({})

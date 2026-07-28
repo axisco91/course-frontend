@@ -201,11 +201,21 @@ return
 
       if (mode === 'create') {
         const r = await createRegistration(formData)
-        if (r.data?.success) toast.success(r.data?.message ?? t('Saved'))
+        if (!r.data?.success) {
+          toast.error(r.data?.message ?? t('unexpectedError'), { position: 'top-right' })
+
+          return
+        }
+        toast.success(r.data?.message ?? t('Saved'))
       } else {
         if (!registrationId) return
         const r = await updateRegistration(registrationId, formData)
-        if (r.data?.success) toast.success(r.data?.message ?? t('Saved'))
+        if (!r.data?.success) {
+          toast.error(r.data?.message ?? t('unexpectedError'), { position: 'top-right' })
+
+          return
+        }
+        toast.success(r.data?.message ?? t('Saved'))
       }
 
       dispatch(generalActions.addFilterButtonClickCount())

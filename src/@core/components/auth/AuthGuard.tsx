@@ -4,6 +4,11 @@ import { ReactNode, ReactElement, useEffect } from 'react'
 // ** Next Import
 import { useRouter } from 'next/router'
 
+// ** MUI Imports
+import Box from '@mui/material/Box'
+import Button from '@mui/material/Button'
+import Typography from '@mui/material/Typography'
+
 // ** Hooks Import
 import { useAuth } from 'src/hooks/useAuth'
 
@@ -23,7 +28,7 @@ const AuthGuard = (props: AuthGuardProps) => {
         return
       }
 
-      if (auth.user === null && !window.localStorage.getItem('userData')) {
+      if (!auth.loading && !auth.initializationError && auth.user === null) {
         if (router.asPath !== '/') {
           router.replace({
             pathname: '/login',
@@ -35,12 +40,37 @@ const AuthGuard = (props: AuthGuardProps) => {
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [router.route]
+    [auth.initializationError, auth.loading, auth.user, router]
   )
 
-  if (auth.loading || auth.user === null) {
+  if (auth.loading) {
     return fallback
   }
+
+  if (auth.initializationError) {
+    return (
+      <Box
+        sx={{
+          minHeight: '100vh',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 3,
+          px: 4,
+          textAlign: 'center'
+        }}
+      >
+        <Typography variant='h5'>No se ha podido recuperar la sesión</Typography>
+        <Typography color='text.secondary'>Comprueba la conexión y vuelve a intentarlo.</Typography>
+        <Button variant='contained' onClick={() => void auth.retryInitialization()}>
+          Reintentar
+        </Button>
+      </Box>
+    )
+  }
+
+  if (auth.user === null) return fallback
 
   return <>{children}</>
 }

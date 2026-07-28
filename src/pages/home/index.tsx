@@ -11,7 +11,7 @@ import CommissionsMetric from 'src/views/dashboard/Commissionsmetric'
 import useHasPermission from 'src/context/hasPermission'
 
 const Home = () => {
-  const userData = useSelector((state: RootState) => (state as any).auth?.userData)
+  const userData = useSelector((state: RootState) => state.auth.user)
   const hasProfitPermission = useHasPermission(['read.profits'])
   const hasPermission = useHasPermission(['read.tracings'])
 

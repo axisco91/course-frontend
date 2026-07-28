@@ -6,7 +6,7 @@ import Box from '@mui/material/Box'
 import Card from '@mui/material/Card'
 import Typography from '@mui/material/Typography'
 import { DataGrid, GridRenderCellParams, GridSortModel } from 'src/views/components/DataGrid'
-import { CardContent, IconButton, Tooltip } from '@mui/material'
+import { CardContent, Chip, IconButton, Tooltip } from '@mui/material'
 
 // ** Redux
 import { useSelector, useDispatch } from 'react-redux'
@@ -54,7 +54,7 @@ const WebPlatformsTable = () => {
   const columns = useMemo(
     () => [
       {
-        flex: 0.45,
+        flex: 0.35,
         minWidth: 260,
         field: 'name',
         headerName: 'NOMBRE',
@@ -66,7 +66,7 @@ const WebPlatformsTable = () => {
         )
       },
       {
-        flex: 0.45,
+        flex: 0.35,
         minWidth: 260,
         field: 'url',
         headerName: 'URL',
@@ -76,6 +76,40 @@ const WebPlatformsTable = () => {
             {params.row?.url ?? ''}
           </Typography>
         )
+      },
+      {
+        flex: 0.25,
+        minWidth: 190,
+        field: 'connection_status',
+        headerName: 'CONEXIÓN CON ZONA',
+        headerAlign: 'center',
+        align: 'center',
+        sortable: false,
+        renderCell: (params: GridRenderCellParams) => {
+          const missing = [
+            !String(params.row?.url ?? '').trim() ? 'URL de Moodle' : null,
+            !params.row?.token_configured ? 'token de servicio web' : null
+          ].filter(Boolean)
+
+          return (
+            <Tooltip
+              title={
+                missing.length
+                  ? `Falta: ${missing.join(' y ')}`
+                  : 'La configuración básica está completa. Edita la plataforma para verificar la conexión.'
+              }
+              placement='top'
+            >
+              <Chip
+                size='small'
+                color={missing.length ? 'warning' : 'info'}
+                variant='tonal'
+                icon={<Icon icon={missing.length ? 'tabler:alert-circle' : 'tabler:plug-connected'} fontSize={16} />}
+                label={missing.length ? `Falta ${missing.length} requisito${missing.length > 1 ? 's' : ''}` : 'Lista para verificar'}
+              />
+            </Tooltip>
+          )
+        }
       },
       {
         flex: 0.18,

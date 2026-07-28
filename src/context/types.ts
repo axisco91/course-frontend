@@ -8,22 +8,23 @@ export type LoginParams = {
 }
 
 export type UserDataType = {
-  id: number
-  role: []
-  user: string
+  id?: number
+  role: string
+  user?: string
   email: string
-  fullName: string
+  fullname: string
   username: string
-  password: string
   avatar?: string | null
-  accessToken: string
-  permissions: []
-  default_access: number
+  accessToken?: string
+  permissions: string[]
+  default_access?: number
 }
 
 export type AuthValuesType = {
   loading: boolean
+  initializationError: boolean
   logout: () => void
+  retryInitialization: () => Promise<void>
   user: UserDataType | null
   setLoading: (value: boolean) => void
   setUser: (value: UserDataType | null) => void

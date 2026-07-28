@@ -9,7 +9,7 @@ import DatePickerWrapper from 'src/@core/styles/libs/react-datepicker'
 import { es, enUS } from 'date-fns/locale'
 import * as yup from 'yup'
 import toast from 'react-hot-toast'
-import { useForm, Controller, SubmitHandler } from 'react-hook-form'
+import { useForm, Controller, SubmitErrorHandler, SubmitHandler } from 'react-hook-form'
 import { yupResolver } from '@hookform/resolvers/yup'
 import { useTranslation } from 'react-i18next'
 import { useSelector, useDispatch } from 'react-redux'
@@ -21,12 +21,23 @@ import { generalActions } from 'src/reducers/general/GeneralReducer'
 import { trainingActionActions } from 'src/reducers/trainingActions/TrainingActionReducer'
 
 // ✅ course APIs (ajusta a tus exports reales)
-import { createCourse, editCourse, getCourse, getNextFormativeAction } from 'src/api/api'
+import {
+  createCourse,
+  editCourse,
+  getCourse,
+  getNextFormativeAction,
+  getMoodlePlatformCourses,
+  getMoodleTemplates,
+  saveMoodleTemplate,
+  linkMoodleCourse,
+  syncMoodleCourse
+} from 'src/api/api'
 import { courseActions } from 'src/reducers/courses/CourseReducer'
 
 type Mode = 'view' | 'edit' | 'create'
 type TranslationFunction = (key: string) => string
 type List = { id: number; name: string; surname?: string }
+type MoodleCourseOption = { id: number; fullname: string; shortname: string }
 
 const teacherLabel = (teacher: List | null | undefined) =>
   [teacher?.name, teacher?.surname].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim()
@@ -42,6 +53,12 @@ const renderTeacherOption = (props: React.HTMLAttributes<HTMLLIElement>, option:
     {teacherLabel(option)}
   </li>
 )
+
+const moodleModeOptions = [
+  { id: 'disabled', name: 'Sin Moodle' },
+  { id: 'manual', name: 'Vincular curso existente' },
+  { id: 'automatic', name: 'Crear desde curso base' }
+] as const
 
 const toInputDate = (value: unknown) => {
   const raw = String(value ?? '').trim()
@@ -145,6 +162,8 @@ type FormValues = {
   course_type: List | null
   teacher: List | null
   web_platform: List | null
+  moodle_mode: 'disabled' | 'manual' | 'automatic'
+  moodle_course: MoodleCourseOption | null
 
   nebrija: boolean
 
@@ -245,6 +264,8 @@ const CoursesGeneralTab: React.FC<CoursesGeneralTabProps> = ({ open, mode, cours
       course_type: null,
       teacher: null,
       web_platform: null,
+      moodle_mode: 'disabled',
+      moodle_course: null,
 
       nebrija: false,
 
@@ -290,11 +311,63 @@ const CoursesGeneralTab: React.FC<CoursesGeneralTabProps> = ({ open, mode, cours
     control,
     handleSubmit,
     setValue,
+    watch,
     formState: { errors }
   } = useForm<FormValues>({
     defaultValues,
     resolver
   })
+
+  const moodleMode = watch('moodle_mode')
+  const selectedPlatform = watch('web_platform')
+  const selectedTrainingAction = watch('training_action')
+  const [moodleCourses, setMoodleCourses] = useState<MoodleCourseOption[]>([])
+  const [moodleCoursesLoading, setMoodleCoursesLoading] = useState(false)
+  const [moodleSyncStatus, setMoodleSyncStatus] = useState('disconnected')
+  const [moodleSyncError, setMoodleSyncError] = useState('')
+
+  const retryMoodleSync = async () => {
+    if (!courseId) return
+    try {
+      await syncMoodleCourse(courseId)
+      setMoodleSyncStatus('pending')
+      setMoodleSyncError('')
+      toast.success('Sincronización Moodle encolada')
+    } catch (error) {
+      handleError(error, logout)
+    }
+  }
+
+  useEffect(() => {
+    if (moodleMode === 'disabled' || !selectedPlatform?.id) {
+      setMoodleCourses([])
+
+      return
+    }
+    let cancelled = false
+    setMoodleCoursesLoading(true)
+    Promise.all([
+      getMoodlePlatformCourses(selectedPlatform.id),
+      selectedTrainingAction?.id ? getMoodleTemplates(selectedTrainingAction.id) : Promise.resolve(null)
+    ])
+      .then(([coursesResponse, templatesResponse]) => {
+        if (cancelled) return
+        const courses = coursesResponse.data?.data?.courses ?? []
+        setMoodleCourses(courses)
+        const templates = templatesResponse?.data?.data?.templates ?? []
+        const configured = templates.find((item: any) => Number(item.web_platform_id) === Number(selectedPlatform.id))
+        if (moodleMode === 'automatic' && configured) {
+          setValue('moodle_course', courses.find((item: MoodleCourseOption) => item.id === Number(configured.moodle_course_id)) ?? null)
+        }
+      })
+      .catch(error => handleError(error, logout))
+      .finally(() => !cancelled && setMoodleCoursesLoading(false))
+
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [moodleMode, selectedPlatform?.id, selectedTrainingAction?.id])
 
   // ----------------------------
   // ✅ helper pick
@@ -347,6 +420,8 @@ const CoursesGeneralTab: React.FC<CoursesGeneralTabProps> = ({ open, mode, cours
 
     if (mode === 'create') {
       reset(defaultValues)
+      setMoodleSyncStatus('disconnected')
+      setMoodleSyncError('')
       setLoading(false)
 
       // reset states de group
@@ -372,6 +447,8 @@ const CoursesGeneralTab: React.FC<CoursesGeneralTabProps> = ({ open, mode, cours
         if (!c) throw new Error('Course payload not found')
 
         onLoaded?.(c)
+        setMoodleSyncStatus(c.moodle_sync_status ?? 'disconnected')
+        setMoodleSyncError(c.moodle_sync_error ?? '')
 
         // En EDIT/VIEW normalmente no se edita group
         setGroupEditable(false)
@@ -383,6 +460,10 @@ const CoursesGeneralTab: React.FC<CoursesGeneralTabProps> = ({ open, mode, cours
           course_type: pick(courseTypesList, c.course_type_id),
           teacher: pick(teachersList, c.teacher_id),
           web_platform: pick(webPlatformsList, c.web_platform_id),
+          moodle_mode: c.moodle_mode ?? 'disabled',
+          moodle_course: c.moodle_course_id
+            ? { id: Number(c.moodle_course_id), fullname: c.moodle_shortname ?? `Moodle #${c.moodle_course_id}`, shortname: c.moodle_shortname ?? '' }
+            : null,
 
           nebrija: String(c.nebrija ?? '0') === '1',
 
@@ -453,6 +534,7 @@ const CoursesGeneralTab: React.FC<CoursesGeneralTabProps> = ({ open, mode, cours
       formData.append('course_type_id', data.course_type?.id != null ? String(data.course_type.id) : '')
       formData.append('teacher_id', data.teacher?.id != null ? String(data.teacher.id) : '')
       formData.append('web_platform_id', data.web_platform?.id != null ? String(data.web_platform.id) : '')
+      formData.append('moodle_mode', data.moodle_mode)
 
       formData.append('nebrija', data.nebrija ? '1' : '0')
 
@@ -487,21 +569,49 @@ const CoursesGeneralTab: React.FC<CoursesGeneralTabProps> = ({ open, mode, cours
       formData.append('course_status_id', data.course_status?.id != null ? String(data.course_status.id) : '')
       formData.append('price', String(data.price ?? ''))
 
+      if (data.moodle_mode === 'automatic') {
+        if (!data.training_action?.id || !data.web_platform?.id || !data.moodle_course?.id) {
+          throw new Error('Selecciona la plataforma y el curso base de Moodle.')
+        }
+        await saveMoodleTemplate(data.training_action.id, {
+          web_platform_id: data.web_platform.id,
+          moodle_course_id: data.moodle_course.id
+        })
+      }
+
       if (mode === 'create') {
         const response = await createCourse(formData)
+        if (!response.data?.success) {
+          throw new Error(response.data?.message || 'No se ha podido crear el curso.')
+        }
         if (response.data?.success) {
           toast.success(response.data.message ?? t('Saved'))
           dispatch(generalActions.addFilterButtonClickCount())
 
           const newId = response.data?.data?.course?.id ?? response.data?.data?.id
           if (newId) {
+            if (data.moodle_mode === 'manual' && data.web_platform?.id && data.moodle_course?.id) {
+              await linkMoodleCourse(newId, {
+                web_platform_id: data.web_platform.id,
+                moodle_course_id: data.moodle_course.id
+              })
+            }
             dispatch(courseActions.setId(newId))
             dispatch(courseActions.openModal({ mode: 'edit', courseId: newId }))
           }
         }
       } else if (mode === 'edit' && courseId) {
         const response = await editCourse(courseId, formData)
+        if (!response.data?.success) {
+          throw new Error(response.data?.message || 'No se ha podido guardar el curso.')
+        }
         if (response.data?.success) {
+          if (data.moodle_mode === 'manual' && data.web_platform?.id && data.moodle_course?.id) {
+            await linkMoodleCourse(courseId, {
+              web_platform_id: data.web_platform.id,
+              moodle_course_id: data.moodle_course.id
+            })
+          }
           toast.success(response.data.message ?? t('Saved'))
           dispatch(generalActions.addFilterButtonClickCount())
         }
@@ -511,6 +621,13 @@ const CoursesGeneralTab: React.FC<CoursesGeneralTabProps> = ({ open, mode, cours
     } finally {
       setSaving(false)
     }
+  }
+
+  const onFormInvalid: SubmitErrorHandler<FormValues> = validationErrors => {
+    const firstError = Object.values(validationErrors).find(error => error?.message)
+    toast.error(String(firstError?.message || 'Revisa los campos obligatorios del curso.'), {
+      position: 'top-right'
+    })
   }
 
   const disabled = readOnly || loading || saving
@@ -550,7 +667,7 @@ const CoursesGeneralTab: React.FC<CoursesGeneralTabProps> = ({ open, mode, cours
   return (
     <DatePickerWrapper>
       <Fragment>
-      <form onSubmit={handleSubmit(onFormSubmit)}>
+      <form onSubmit={handleSubmit(onFormSubmit, onFormInvalid)}>
         <Box sx={{ mb: 6 }}>
           <Typography variant='h6'>{t('Course data')}</Typography>
         </Box>
@@ -723,6 +840,29 @@ const CoursesGeneralTab: React.FC<CoursesGeneralTabProps> = ({ open, mode, cours
             />
           </Grid>
 
+          <Grid item xs={12} md={4}>
+            <Controller
+              name='moodle_mode'
+              control={control}
+              render={({ field }) => (
+                <Autocomplete
+                  value={moodleModeOptions.find(option => option.id === field.value) ?? moodleModeOptions[0]}
+                  onChange={(_, value) => {
+                    field.onChange(value?.id ?? 'disabled')
+                    setValue('moodle_course', null)
+                  }}
+                  options={[...moodleModeOptions]}
+                  getOptionLabel={option => option.name}
+                  isOptionEqualToValue={(option, value) => option.id === value.id}
+                  disabled={disabled}
+                  renderInput={params => (
+                    <CustomTextField {...params} label='Integración Moodle' disabled={disabled} />
+                  )}
+                />
+              )}
+            />
+          </Grid>
+
           {/* web platform */}
           <Grid item xs={12} md={4}>
             <Controller
@@ -736,13 +876,13 @@ const CoursesGeneralTab: React.FC<CoursesGeneralTabProps> = ({ open, mode, cours
                   getOptionLabel={o => o?.name ?? ''}
                   isOptionEqualToValue={(o, v) => o.id === v.id}
                   renderOption={renderListOption}
-                  disabled={disabled}
+                  disabled={disabled || moodleMode === 'disabled'}
                   renderInput={params => (
                     <CustomTextField
                       {...params}
                       label={t('Web Platform')}
                       placeholder={t('Web Platform')}
-                      disabled={disabled}
+                      disabled={disabled || moodleMode === 'disabled'}
                       inputProps={autoCompleteInputProps(params)}
                     />
                   )}
@@ -750,6 +890,48 @@ const CoursesGeneralTab: React.FC<CoursesGeneralTabProps> = ({ open, mode, cours
               )}
             />
           </Grid>
+
+          {moodleMode !== 'disabled' && (
+            <Grid item xs={12} md={4}>
+              <Controller
+                name='moodle_course'
+                control={control}
+                render={({ field }) => (
+                  <Autocomplete
+                    value={field.value}
+                    onChange={(_, value) => field.onChange(value)}
+                    options={moodleCourses}
+                    loading={moodleCoursesLoading}
+                    getOptionLabel={option => `${option.shortname} - ${option.fullname}`}
+                    isOptionEqualToValue={(option, value) => option.id === value.id}
+                    disabled={disabled || !selectedPlatform?.id}
+                    renderInput={params => (
+                      <CustomTextField
+                        {...params}
+                        label={moodleMode === 'automatic' ? 'Curso base Moodle' : 'Curso Moodle existente'}
+                        helperText={moodleMode === 'automatic' ? 'Se copiará sin usuarios ni matrículas.' : undefined}
+                      />
+                    )}
+                  />
+                )}
+              />
+            </Grid>
+          )}
+
+          {mode !== 'create' && (
+            <Grid item xs={12}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                <Typography variant='body2' color={moodleSyncStatus === 'error' ? 'error' : 'text.secondary'}>
+                  Estado Moodle: {moodleSyncStatus}{moodleSyncError ? ` — ${moodleSyncError}` : ''}
+                </Typography>
+                {moodleSyncStatus === 'error' && moodleMode !== 'disabled' ? (
+                  <Button size='small' variant='tonal' onClick={retryMoodleSync} disabled={loading || saving}>
+                    Reintentar
+                  </Button>
+                ) : null}
+              </Box>
+            </Grid>
+          )}
 
           {/* price */}
           <Grid item xs={12} md={4}>

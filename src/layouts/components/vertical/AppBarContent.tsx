@@ -16,7 +16,6 @@ import UserLanguageDropdown from '../UserLanguageDropdown'
 import { useSelector } from 'react-redux'
 import { RootState } from 'src/reducers/types/types'
 import { Typography } from '@mui/material'
-import DownloadsDropdown from '../DownloadsDropdown'
 import { useRouter } from 'next/router'
 import Translations from 'src/layouts/components/Translations'
 import navigation from 'src/navigation/vertical'
@@ -68,7 +67,7 @@ const AppBarContent = (props: Props) => {
           </IconButton>
         ) : null}
         <Box sx={{ ml: 2, display: 'flex', alignItems: 'center', gap: 3 }}>
-          {logo && <img src={logo} width={100} />}
+          {logo && <img src={logo} width={100} alt='' />}
           {pageTitle ? (
             <Typography variant='h5' sx={{ fontWeight: 700, color: 'text.primary', lineHeight: 1.2 }}>
               <Translations text={pageTitle} />
@@ -78,7 +77,6 @@ const AppBarContent = (props: Props) => {
       </Box>
       <Box className='actions-right' sx={{ display: 'flex', alignItems: 'center' }}>
         <UserLanguageDropdown settings={settings} />
-        <DownloadsDropdown settings={settings} />
         <TracingNotificationDropdown />
         {userPermissions.includes('global.errors') && (
           <IconButton color='inherit' aria-haspopup='true' onClick={() => router.push(`/errors`)}>

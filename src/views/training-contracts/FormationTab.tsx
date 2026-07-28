@@ -19,7 +19,6 @@ import {
   createTrainingContractElement,
   deleteTrainingContract_element,
   orderElements,
-  register,
   deleteExamTutorial,
   getTrainingContractElementsWithId,
   getTrainingContractSpecialties,
@@ -35,6 +34,7 @@ import { AuthContext } from 'src/context/AuthContext'
 import EditElementDatesDialog from './EditElementDatesDialog'
 import EditTutorDialog from './EditTutorDialog'
 import ExamTutorialDialog from './ExamTutorialDialog'
+import CreateCourseDialog from './CreateCourseDialog'
 
 // ✅ NUEVOS DIALOGS (en ficheros separados)
 
@@ -94,6 +94,11 @@ type EditTutorState = {
   element: ElementRow | null
 }
 
+type CreateCourseState = {
+  open: boolean
+  element: ElementRow | null
+}
+
 const TrainingContractFormationTab: React.FC<{ open: boolean }> = ({ open }) => {
   const dispatch = useDispatch()
   const { handleError } = useErrorHandler()
@@ -140,6 +145,7 @@ const TrainingContractFormationTab: React.FC<{ open: boolean }> = ({ open }) => 
   // ✅ dialogs externos
   const [editDates, setEditDates] = useState<EditDatesState>({ open: false, element: null })
   const [editTutor, setEditTutor] = useState<EditTutorState>({ open: false, element: null })
+  const [createCourse, setCreateCourse] = useState<CreateCourseState>({ open: false, element: null })
 
   // Confirm (ya lo tenías)
   const [confirm, setConfirm] = useState<ConfirmState>({ open: false, title: '' })
@@ -166,7 +172,7 @@ const TrainingContractFormationTab: React.FC<{ open: boolean }> = ({ open }) => 
     } catch {
       closeConfirm()
     }
-  }, [confirm.onConfirm, closeConfirm])
+  }, [confirm, closeConfirm])
 
   // ✅ SIN mode: se deshabilita todo si la tab NO está abierta
   const disabledAll = !open
@@ -487,37 +493,12 @@ const TrainingContractFormationTab: React.FC<{ open: boolean }> = ({ open }) => 
   }, [isOrdering])
 
   // Register/open course
-  const doRegisterElement = useCallback(
-    async (elementId: number) => {
-      try {
-        const response = await register(elementId)
-        if (response?.status !== 200) {
-          toast.error(response?.data?.message ?? 'No se pudo crear')
-
-          return
-        }
-        toast.success('Curso creado')
-        const element = response.data?.data?.element ?? response.data?.element
-        dispatch(trainingContractActions.replaceElement(element))
-      } catch (e) {
-        handleErrorRef.current(e, logoutRef.current)
-        toast.error('No se pudo crear')
-      }
-    },
-    [dispatch]
-  )
-
   const handleRegisterElement = useCallback(
     (elementId: number) => {
-      openConfirm({
-        title: '¿Crear curso?',
-        description: 'Se creará el curso para este elemento.',
-        confirmText: 'Crear',
-        cancelText: 'Cancelar',
-        onConfirm: () => doRegisterElement(elementId)
-      })
+      const element = (sortedListRef.current ?? []).find(item => Number(item?.id) === Number(elementId)) ?? null
+      if (element) setCreateCourse({ open: true, element })
     },
-    [openConfirm, doRegisterElement]
+    []
   )
 
   const handleOpenCourseModal = useCallback(
@@ -740,6 +721,17 @@ const TrainingContractFormationTab: React.FC<{ open: boolean }> = ({ open }) => 
         element={editTutor.element}
         onClose={() => setEditTutor({ open: false, element: null })}
         onSaved={onSavedTutor}
+      />
+
+      <CreateCourseDialog
+        open={createCourse.open}
+        element={createCourse.element}
+        onClose={() => setCreateCourse({ open: false, element: null })}
+        onCreated={(element, queueError) => {
+          dispatch(trainingContractActions.replaceElement(element))
+          if (queueError) toast.error(`Curso creado, pero Moodle devolvió: ${queueError}`)
+          else toast.success('Curso creado')
+        }}
       />
 
       {/* ✅ Dialog examen/tutoría: abre/cierra desde Redux */}

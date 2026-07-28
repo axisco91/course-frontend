@@ -27,7 +27,7 @@ export interface RootState {
   auth: {
     id: number | null
     roles: string[] | null
-    user: Auth
+    user: Auth & { role?: string }
     email: string | null
     fullname: string
     username: string | null

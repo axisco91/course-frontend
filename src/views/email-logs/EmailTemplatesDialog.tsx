@@ -16,9 +16,10 @@ import {
   Stack,
   Typography
 } from '@mui/material'
+import Autocomplete from 'src/views/components/GuardedAutocomplete'
 import CustomTextField from 'src/@core/components/mui/text-field'
 import Icon from 'src/@core/components/icon'
-import { getEmailTemplates, resetEmailTemplate, saveEmailTemplate } from 'src/api/api'
+import { getEmailTemplates, getWebPlatforms, resetEmailTemplate, saveEmailTemplate } from 'src/api/api'
 import toast from 'react-hot-toast'
 
 type Template = {
@@ -28,7 +29,10 @@ type Template = {
   body_html: string
   variables: string[]
   customized: boolean
+  source?: 'platform' | 'company' | 'default'
 }
+
+type Platform = { id: number; name: string }
 
 type Props = {
   open: boolean
@@ -79,6 +83,8 @@ const EmailTemplatesDialog = ({ open, onClose }: Props) => {
   const [bodyHtml, setBodyHtml] = useState('')
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [platforms, setPlatforms] = useState<Platform[]>([])
+  const [selectedPlatform, setSelectedPlatform] = useState<Platform | null>(null)
   const bodyInputRef = useRef<HTMLTextAreaElement | null>(null)
 
   const selectedTemplate = useMemo(
@@ -89,7 +95,7 @@ const EmailTemplatesDialog = ({ open, onClose }: Props) => {
   const loadTemplates = async (preferredType?: string) => {
     setLoading(true)
     try {
-      const response = await getEmailTemplates()
+      const response = await getEmailTemplates(selectedPlatform?.id)
       const list: Template[] = response.data?.data?.email_templates ?? []
       setTemplates(list)
       const nextType = preferredType && list.some(item => item.mail_type === preferredType)
@@ -104,8 +110,17 @@ const EmailTemplatesDialog = ({ open, onClose }: Props) => {
   }
 
   useEffect(() => {
-    if (open) loadTemplates()
+    if (open) {
+      getWebPlatforms().then(response => setPlatforms(response.data?.data?.web_platforms ?? []))
+      loadTemplates()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
+
+  useEffect(() => {
+    if (open) loadTemplates(selectedType)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPlatform?.id])
 
   useEffect(() => {
     if (!selectedTemplate) return
@@ -140,7 +155,8 @@ const EmailTemplatesDialog = ({ open, onClose }: Props) => {
       await saveEmailTemplate(selectedTemplate.mail_type, {
         mail_type: selectedTemplate.mail_type,
         subject,
-        body_html: bodyHtml
+        body_html: bodyHtml,
+        web_platform_id: selectedPlatform?.id ?? null
       })
       toast.success('Plantilla guardada correctamente')
       await loadTemplates(selectedTemplate.mail_type)
@@ -155,7 +171,7 @@ const EmailTemplatesDialog = ({ open, onClose }: Props) => {
     if (!selectedTemplate || !window.confirm('Se restaurará la plantilla original. ¿Continuar?')) return
     setSaving(true)
     try {
-      await resetEmailTemplate(selectedTemplate.mail_type)
+      await resetEmailTemplate(selectedTemplate.mail_type, selectedPlatform?.id)
       toast.success('Plantilla original restaurada')
       await loadTemplates(selectedTemplate.mail_type)
     } catch (error: any) {
@@ -178,6 +194,20 @@ const EmailTemplatesDialog = ({ open, onClose }: Props) => {
       </DialogTitle>
       <Divider />
       <DialogContent sx={{ minHeight: 650 }}>
+        <Autocomplete
+          sx={{ mb: 5, maxWidth: 480 }}
+          value={selectedPlatform}
+          onChange={(_, value) => setSelectedPlatform(value)}
+          options={platforms}
+          getOptionLabel={option => option.name}
+          isOptionEqualToValue={(option, value) => option.id === value.id}
+          renderInput={params => (
+            <CustomTextField {...params} label='Ámbito de la plantilla' placeholder='Empresa completa' />
+          )}
+        />
+        <Typography variant='body2' color='text.secondary' sx={{ mt: -3, mb: 4 }}>
+          {selectedPlatform ? `Personalización para ${selectedPlatform.name}` : 'Plantillas generales de la empresa'}
+        </Typography>
         {loading ? (
           <Box sx={{ minHeight: 500, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <CircularProgress />
@@ -194,7 +224,7 @@ const EmailTemplatesDialog = ({ open, onClose }: Props) => {
                     onClick={() => setSelectedType(template.mail_type)}
                   >
                     <ListItemText primary={template.name} />
-                    {template.customized && <Chip size='small' color='primary' label='Editada' />}
+                    {template.customized && <Chip size='small' color='primary' label={template.source === 'platform' ? 'Moodle' : 'Empresa'} />}
                   </ListItemButton>
                 ))}
               </List>

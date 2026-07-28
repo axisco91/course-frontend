@@ -23,6 +23,7 @@ import { useTranslation } from 'react-i18next'
 import CoursesGeneralTab from './CoursesGeneralTab'
 import CoursesStudentsTable from './CoursesStudentsTable'
 import TracingsTable from '../tracings/TracingsTable'
+import TracingsModal from '../tracings/TracingsModal'
 
 type Mode = 'view' | 'edit' | 'create'
 
@@ -74,6 +75,7 @@ const CoursesModel: React.FC<CoursesModalProps> = ({ open, onClose, mode, course
     name?: string
     surname?: string
   } | null>(null)
+  const [openTracingId, setOpenTracingId] = useState<number | null>(null)
 
   const userPermissions = useSelector((state: RootState) => state.auth.permissions)
   const canUpdate = Array.isArray(userPermissions) && userPermissions.includes('edit.courses')
@@ -91,6 +93,7 @@ const CoursesModel: React.FC<CoursesModalProps> = ({ open, onClose, mode, course
     setTab(0)
     setCourseName('')
     setSelectedTracingStudent(null)
+    setOpenTracingId(null)
   }, [open, courseId])
 
   // sync mode
@@ -229,11 +232,18 @@ const CoursesModel: React.FC<CoursesModalProps> = ({ open, onClose, mode, course
                 fixedFilters={tracingFilters}
                 useGlobalFilters={false}
                 hideCourseColumn
+                onOpenTracing={setOpenTracingId}
               />
             )}
           </TabPanel>
         )}
       </DialogContent>
+      <TracingsModal
+        open={openTracingId !== null}
+        mode='edit'
+        tracingId={openTracingId}
+        onClose={() => setOpenTracingId(null)}
+      />
     </Dialog>
   )
 }

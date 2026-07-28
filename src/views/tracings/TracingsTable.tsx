@@ -38,6 +38,7 @@ type TracingsTableProps = {
   useGlobalFilters?: boolean
   active?: boolean
   hideCourseColumn?: boolean
+  onOpenTracing?: (tracingId: number) => void
 }
 
 const EMPTY_FILTERS: Record<string, string | number | null | undefined> = {}
@@ -70,7 +71,8 @@ const TracingsTable = ({
   fixedFilters = EMPTY_FILTERS,
   useGlobalFilters = true,
   active = true,
-  hideCourseColumn = false
+  hideCourseColumn = false,
+  onOpenTracing
 }: TracingsTableProps) => {
   const { t } = useTranslation()
   const dispatch = useDispatch()
@@ -159,6 +161,7 @@ const TracingsTable = ({
           )
         }
       },
+
       // Student column is optional, because in some cases it is already includded
       {
         flex: 0.18,
@@ -350,8 +353,13 @@ const TracingsTable = ({
                     onClick={e => {
                       e.stopPropagation()
                       blurActiveElement()
-                      dispatch(tracingActions.setId(Number(id)))
-                      dispatch(tracingActions.openModal({ mode: 'edit' }))
+                      const tracingId = Number(id)
+                      if (onOpenTracing) {
+                        onOpenTracing(tracingId)
+                      } else {
+                        dispatch(tracingActions.setId(tracingId))
+                        dispatch(tracingActions.openModal({ mode: 'edit' }))
+                      }
                     }}
                   >
                     <Icon icon='tabler:pencil' fontSize={20} />
@@ -378,7 +386,7 @@ const TracingsTable = ({
         }
       }
     ],
-    [t, canUpdate, canEliminate, canReadStudents, canReadCompanies, dispatch]
+    [t, canUpdate, canEliminate, canReadStudents, canReadCompanies, dispatch, onOpenTracing]
   )
 
   const columns = useMemo(
@@ -456,8 +464,13 @@ const TracingsTable = ({
               onRowClick={params => {
                 blurActiveElement()
                 const id = (params.row as any)?.id ?? (params.row as any)?.value ?? params.id
-                dispatch(tracingActions.setId(Number(id)))
-                dispatch(tracingActions.openModal({ mode: 'edit' }))
+                const tracingId = Number(id)
+                if (onOpenTracing) {
+                  onOpenTracing(tracingId)
+                } else {
+                  dispatch(tracingActions.setId(tracingId))
+                  dispatch(tracingActions.openModal({ mode: 'edit' }))
+                }
               }}
               disableColumnFilter
               pagination

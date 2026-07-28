@@ -4,6 +4,16 @@ import authConfig from 'src/configs/auth'
 const getAuthToken = () =>
   typeof window !== 'undefined' ? window.localStorage.getItem(authConfig.storageTokenKeyName) : null
 
+let unauthorizedHandler = null
+
+export const setUnauthorizedHandler = handler => {
+  unauthorizedHandler = handler
+
+  return () => {
+    if (unauthorizedHandler === handler) unauthorizedHandler = null
+  }
+}
+
 const getBaseURL = () => {
   if (typeof window === 'undefined') return ''
 
@@ -51,15 +61,26 @@ const attachDynamicBaseUrl = client => {
 
 attachDynamicBaseUrl(instance)
 
-authInstance.interceptors.request.use(config => {
-  config.baseURL = getBaseURL()
-  const token = getAuthToken()
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`
-  }
+const attachAuthInterceptors = client => {
+  client.interceptors.request.use(config => {
+    config.baseURL = getBaseURL()
+    const token = getAuthToken()
+    if (token) config.headers.Authorization = `Bearer ${token}`
 
-  return config
-})
+    return config
+  })
+
+  client.interceptors.response.use(
+    response => response,
+    error => {
+      if (error?.response?.status === 401 && unauthorizedHandler) unauthorizedHandler()
+
+      return Promise.reject(error)
+    }
+  )
+}
+
+attachAuthInterceptors(authInstance)
 
 // Cuando Logeado y tiene documento o imagen
 export const authInstanceWithFile = axios.create({
@@ -70,15 +91,7 @@ export const authInstanceWithFile = axios.create({
   }
 })
 
-authInstanceWithFile.interceptors.request.use(config => {
-  config.baseURL = getBaseURL()
-  const token = getAuthToken()
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`
-  }
-
-  return config
-})
+attachAuthInterceptors(authInstanceWithFile)
 
 // Cuando descargas un excel
 export const authInstanceExport = axios.create({
@@ -90,15 +103,7 @@ export const authInstanceExport = axios.create({
   responseType: 'blob'
 })
 
-authInstanceExport.interceptors.request.use(config => {
-  config.baseURL = getBaseURL()
-  const token = getAuthToken()
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`
-  }
-
-  return config
-})
+attachAuthInterceptors(authInstanceExport)
 
 // Obtenemos algunos datos de empresa y ademas las imagenes
 export const fetchLayout = hostname => {
@@ -503,6 +508,13 @@ export const getWebPlatform = (id, data) => authInstance.get(`/web-platforms/${i
 export const createWebPlatform = data => authInstance.post(`/web-platforms`, data)
 export const editWebPlatform = (id, data) => authInstance.put(`/web-platforms/${id}`, data)
 export const deleteWebPlatform = id => authInstance.delete(`web-platforms/${id}`)
+export const getMoodlePlatformCourses = platformId => authInstance.get(`/moodle/platforms/${platformId}/courses`)
+export const getMoodlePlatformDiagnostics = platformId => authInstance.get(`/moodle/platforms/${platformId}/diagnostics`)
+export const getMoodleTemplates = trainingActionId => authInstance.get(`/moodle/training-actions/${trainingActionId}/templates`)
+export const saveMoodleTemplate = (trainingActionId, data) => authInstance.put(`/moodle/training-actions/${trainingActionId}/template`, data)
+export const linkMoodleCourse = (courseId, data) => authInstance.post(`/courses/${courseId}/moodle/link`, data)
+export const disconnectMoodleCourse = courseId => authInstance.post(`/courses/${courseId}/moodle/disconnect`)
+export const syncMoodleCourse = courseId => authInstance.post(`/courses/${courseId}/moodle/sync`)
 
 // origen de cursos
 export const getCourseOrigins = data => authInstance.get('/course-origins', { params: data })
@@ -764,6 +776,6 @@ export const getCompanySettings = () => instance.get(`companies/settings`)
 export const getCompanySetting = (companyId, key) => authInstance.get(`companies/${companyId}/settings/${key}`)
 export const getEmailLogs = data => authInstance.get('/email-logs', { params: data })
 export const resendEmailLog = id => authInstance.post(`/email-logs/${id}/resend`)
-export const getEmailTemplates = () => authInstance.get('/email-templates')
+export const getEmailTemplates = webPlatformId => authInstance.get('/email-templates', { params: webPlatformId ? { web_platform_id: webPlatformId } : {} })
 export const saveEmailTemplate = (type, data) => authInstance.put(`/email-templates/${type}`, data)
-export const resetEmailTemplate = type => authInstance.delete(`/email-templates/${type}`)
+export const resetEmailTemplate = (type, webPlatformId) => authInstance.delete(`/email-templates/${type}`, { params: webPlatformId ? { web_platform_id: webPlatformId } : {} })

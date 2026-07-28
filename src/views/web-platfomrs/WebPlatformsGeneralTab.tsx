@@ -1,6 +1,6 @@
 // LiquidationsGeneralTab.tsx
 import React, { Fragment, useContext, useEffect, useMemo, useState } from 'react'
-import { Box, Button, Grid } from '@mui/material'
+import { Alert, Box, Button, Chip, Grid, IconButton, Typography } from '@mui/material'
 import Icon from 'src/@core/components/icon'
 import CustomTextField from 'src/@core/components/mui/text-field'
 
@@ -18,7 +18,7 @@ import SavingDialog from '../components/SavingDialog'
 import { generalActions } from 'src/reducers/general/GeneralReducer'
 
 // ✅ APIs
-import { createWebPlatform, editWebPlatform, getWebPlatform } from 'src/api/api'
+import { createWebPlatform, editWebPlatform, getMoodlePlatformDiagnostics, getWebPlatform } from 'src/api/api'
 
 // ✅ reducer
 import { webPlatformActions } from 'src/reducers/trainingActions/WebPlatformReducer'
@@ -60,6 +60,14 @@ const WebPlatformsGeneralTab: React.FC<WebPlatformsGeneralTabProps> = ({
   const readOnly = mode === 'view'
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [checking, setChecking] = useState(false)
+  const [tokenConfigured, setTokenConfigured] = useState(false)
+  const [requiredMoodleUsernames, setRequiredMoodleUsernames] = useState<string[]>([])
+  const [requiredMoodleRoleShortnames, setRequiredMoodleRoleShortnames] = useState<string[]>([])
+  const [connectionStatus, setConnectionStatus] = useState<{
+    type: 'idle' | 'success' | 'error'
+    message?: string
+  }>({ type: 'idle' })
 
   const defaultValues = useMemo<FormValues>(
     () => ({
@@ -74,7 +82,7 @@ const WebPlatformsGeneralTab: React.FC<WebPlatformsGeneralTabProps> = ({
     reset,
     control,
     handleSubmit,
-    formState: { errors }
+    watch
   } = useForm<FormValues>({
     defaultValues,
     resolver: yupResolver(schema(t)),
@@ -88,6 +96,10 @@ const WebPlatformsGeneralTab: React.FC<WebPlatformsGeneralTabProps> = ({
 
     if (mode === 'create') {
       reset(defaultValues)
+      setTokenConfigured(false)
+      setRequiredMoodleUsernames([])
+      setRequiredMoodleRoleShortnames([])
+      setConnectionStatus({ type: 'idle' })
       setLoading(false)
 
       return
@@ -113,6 +125,13 @@ const WebPlatformsGeneralTab: React.FC<WebPlatformsGeneralTabProps> = ({
           url: l.url ?? '',
           token: l.token ?? ''
         })
+        setTokenConfigured(Boolean(l.token_configured))
+        const usernames = Array.isArray(l.required_moodle_usernames) ? l.required_moodle_usernames : []
+        setRequiredMoodleUsernames(usernames)
+        setRequiredMoodleRoleShortnames(
+          usernames.map((username: string) => l.required_moodle_roles?.[username] ?? '')
+        )
+        setConnectionStatus({ type: 'idle' })
       } catch (error) {
         if (!cancelled) handleError(error, logout)
       } finally {
@@ -131,6 +150,25 @@ const WebPlatformsGeneralTab: React.FC<WebPlatformsGeneralTabProps> = ({
   // ----------------------------
   const onFormSubmit: SubmitHandler<FormValues> = async data => {
     if (readOnly) return
+
+    const usernames = requiredMoodleUsernames.map(username => username.trim())
+    if (usernames.some(username => !username)) {
+      toast.error('Los usernames Moodle obligatorios no pueden estar vacíos.')
+
+      return
+    }
+    if (new Set(usernames.map(username => username.toLowerCase())).size !== usernames.length) {
+      toast.error('Los usernames Moodle obligatorios no pueden estar duplicados.')
+
+      return
+    }
+    const roleShortnames = requiredMoodleRoleShortnames.map(role => role.trim())
+    if (roleShortnames.length !== usernames.length || roleShortnames.some(role => !role)) {
+      toast.error('Cada usuario Moodle obligatorio debe tener un rol.')
+
+      return
+    }
+
     setSaving(true)
 
     try {
@@ -140,6 +178,8 @@ const WebPlatformsGeneralTab: React.FC<WebPlatformsGeneralTabProps> = ({
       formData.append('name', data.name ?? '')
       formData.append('url', data.url ?? '')
       formData.append('token', data.token ?? '')
+      usernames.forEach(username => formData.append('required_moodle_usernames[]', username))
+      roleShortnames.forEach(role => formData.append('required_moodle_role_shortnames[]', role))
 
       if (mode === 'create') {
         const response = await createWebPlatform(formData)
@@ -169,6 +209,33 @@ const WebPlatformsGeneralTab: React.FC<WebPlatformsGeneralTabProps> = ({
     }
   }
 
+  const checkMoodle = async () => {
+    if (!webPlatformId) return
+    setChecking(true)
+    try {
+      const response = await getMoodlePlatformDiagnostics(webPlatformId)
+      const diagnostics = response.data?.data ?? {}
+      if (!diagnostics.compatible) throw new Error(`Versión Moodle no compatible: ${diagnostics.release ?? '-'}`)
+      const message = `Moodle ${diagnostics.release} conectado. Conector ${diagnostics.connectorversion || '-'}`
+      setConnectionStatus({ type: 'success', message })
+      toast.success(message)
+    } catch (error) {
+      const responseMessage = (error as any)?.response?.data?.message
+      setConnectionStatus({
+        type: 'error',
+        message: responseMessage || (error as Error)?.message || 'No se ha podido verificar la conexión.'
+      })
+      handleError(error, logout)
+    } finally {
+      setChecking(false)
+    }
+  }
+
+  const currentUrl = watch('url')
+  const currentToken = watch('token')
+  const hasUrl = Boolean(currentUrl?.trim())
+  const hasToken = tokenConfigured || Boolean(currentToken?.trim())
+
   return (
     <Fragment>
       <form onSubmit={handleSubmit(onFormSubmit)}>
@@ -194,10 +261,103 @@ const WebPlatformsGeneralTab: React.FC<WebPlatformsGeneralTabProps> = ({
               render={({ field }) => <CustomTextField fullWidth label={t('Token')} {...field} />}
             />
           </Grid>
+          <Grid item xs={12}>
+            <Typography variant='subtitle2' sx={{ mb: 2 }}>
+              Usuarios obligatorios en cursos Moodle
+            </Typography>
+            <Typography variant='body2' color='text.secondary' sx={{ mb: 3 }}>
+              Estas cuentas deben existir en Moodle y se matricularán con el rol indicado en los cursos nuevos.
+            </Typography>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              {requiredMoodleUsernames.map((username, index) => (
+                <Box key={index} sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                  <CustomTextField
+                    fullWidth
+                    label={`Username Moodle ${index + 1}`}
+                    value={username}
+                    disabled={readOnly}
+                    onChange={event => {
+                      const next = [...requiredMoodleUsernames]
+                      next[index] = event.target.value
+                      setRequiredMoodleUsernames(next)
+                    }}
+                  />
+                  <CustomTextField
+                    fullWidth
+                    label={`Shortname del rol ${index + 1}`}
+                    value={requiredMoodleRoleShortnames[index] ?? ''}
+                    disabled={readOnly}
+                    onChange={event => {
+                      const next = [...requiredMoodleRoleShortnames]
+                      next[index] = event.target.value
+                      setRequiredMoodleRoleShortnames(next)
+                    }}
+                  />
+                  {!readOnly ? (
+                    <IconButton
+                      color='error'
+                      aria-label={`Eliminar username Moodle ${index + 1}`}
+                      onClick={() => {
+                        setRequiredMoodleUsernames(current => current.filter((_, currentIndex) => currentIndex !== index))
+                        setRequiredMoodleRoleShortnames(current =>
+                          current.filter((_, currentIndex) => currentIndex !== index)
+                        )
+                      }}
+                    >
+                      <Icon icon='tabler:trash' fontSize={20} />
+                    </IconButton>
+                  ) : null}
+                </Box>
+              ))}
+              {!readOnly ? (
+                <Button
+                  variant='tonal'
+                  color='secondary'
+                  startIcon={<Icon icon='tabler:plus' fontSize={20} />}
+                  onClick={() => {
+                    setRequiredMoodleUsernames(current => [...current, ''])
+                    setRequiredMoodleRoleShortnames(current => [...current, ''])
+                  }}
+                  sx={{ alignSelf: 'flex-start' }}
+                >
+                  Añadir usuario Moodle
+                </Button>
+              ) : null}
+            </Box>
+          </Grid>
         </Grid>
+
+        {mode === 'edit' && webPlatformId ? (
+          <Alert
+            severity={connectionStatus.type === 'success' ? 'success' : connectionStatus.type === 'error' ? 'error' : 'info'}
+            sx={{ mt: 5 }}
+          >
+            <Typography variant='body2' sx={{ fontWeight: 600, mb: 2 }}>
+              Requisitos para conectar con Zona
+            </Typography>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
+              <Chip size='small' color={hasUrl ? 'success' : 'warning'} label={hasUrl ? 'URL configurada' : 'Falta URL'} />
+              <Chip size='small' color={hasToken ? 'success' : 'warning'} label={hasToken ? 'Token configurado' : 'Falta token'} />
+              <Chip
+                size='small'
+                color={connectionStatus.type === 'success' ? 'success' : connectionStatus.type === 'error' ? 'error' : 'default'}
+                label={connectionStatus.type === 'success' ? 'Conector verificado' : connectionStatus.type === 'error' ? 'Conector pendiente' : 'Conector sin verificar'}
+              />
+            </Box>
+            <Typography variant='body2' sx={{ mt: 2 }}>
+              {connectionStatus.message || 'Guarda los datos y pulsa “Probar conexión Moodle” para comprobar el plugin, la versión y los permisos del token.'}
+            </Typography>
+          </Alert>
+        ) : null}
 
         {mode !== 'view' && (
           <Box sx={{ mt: 8, display: 'flex', justifyContent: 'center', gap: 3 }}>
+            {mode === 'edit' && webPlatformId ? (
+              <Button variant='tonal' color='info' onClick={checkMoodle} disabled={saving || checking}>
+                <Icon icon='tabler:plug-connected' fontSize={20} />
+                {checking ? 'Comprobando...' : 'Probar conexión Moodle'}
+              </Button>
+            ) : null}
             <Button variant='contained' type='submit' disabled={saving || loading}>
               <Icon icon='tabler:device-floppy' fontSize={20} />
               {t('Save')}

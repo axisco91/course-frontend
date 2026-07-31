@@ -13,13 +13,14 @@ import {
 import { useSelector } from 'react-redux'
 import Autocomplete from 'src/views/components/GuardedAutocomplete'
 import CustomTextField from 'src/@core/components/mui/text-field'
-import { getMoodlePlatformCourses, register } from 'src/api/api'
+import { getMoodlePlatformCategories, getMoodlePlatformCourses, register } from 'src/api/api'
 import { RootState } from 'src/reducers/types/types'
 
 type MoodleMode = 'disabled' | 'manual' | 'automatic'
 type Teacher = { id: number; name: string; surname?: string; dni?: string }
 type Platform = { id: number; name: string }
 type MoodleCourse = { id: number; fullname: string; shortname: string }
+type MoodleCategory = { id: number; name: string; path: string; parent: number; idnumber: string; visible: boolean }
 
 type Props = {
   open: boolean
@@ -51,6 +52,8 @@ const CreateCourseDialog = ({ open, element, onClose, onCreated }: Props) => {
   const [platform, setPlatform] = useState<Platform | null>(null)
   const [moodleCourse, setMoodleCourse] = useState<MoodleCourse | null>(null)
   const [moodleCourses, setMoodleCourses] = useState<MoodleCourse[]>([])
+  const [moodleCategory, setMoodleCategory] = useState<MoodleCategory | null>(null)
+  const [moodleCategories, setMoodleCategories] = useState<MoodleCategory[]>([])
   const [loadingCourses, setLoadingCourses] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -63,6 +66,8 @@ const CreateCourseDialog = ({ open, element, onClose, onCreated }: Props) => {
     setPlatform(null)
     setMoodleCourse(null)
     setMoodleCourses([])
+    setMoodleCategory(null)
+    setMoodleCategories([])
     setLoadingCourses(false)
     setSaving(false)
     setError('')
@@ -72,6 +77,8 @@ const CreateCourseDialog = ({ open, element, onClose, onCreated }: Props) => {
     if (!open || mode === 'disabled' || !platform?.id) {
       setMoodleCourses([])
       setMoodleCourse(null)
+      setMoodleCategories([])
+      setMoodleCategory(null)
 
       return
     }
@@ -80,13 +87,21 @@ const CreateCourseDialog = ({ open, element, onClose, onCreated }: Props) => {
     setLoadingCourses(true)
     setError('')
     setMoodleCourse(null)
-    getMoodlePlatformCourses(platform.id)
-      .then(response => {
-        if (!cancelled) setMoodleCourses(response.data?.data?.courses ?? [])
+    setMoodleCategory(null)
+    Promise.all([
+      getMoodlePlatformCourses(platform.id),
+      mode === 'automatic' ? getMoodlePlatformCategories(platform.id) : Promise.resolve(null)
+    ])
+      .then(([coursesResponse, categoriesResponse]) => {
+        if (!cancelled) {
+          setMoodleCourses(coursesResponse.data?.data?.courses ?? [])
+          setMoodleCategories(categoriesResponse?.data?.data?.categories ?? [])
+        }
       })
       .catch(fetchError => {
         if (!cancelled) {
           setMoodleCourses([])
+          setMoodleCategories([])
           setError(apiErrorMessage(fetchError))
         }
       })
@@ -104,6 +119,8 @@ const CreateCourseDialog = ({ open, element, onClose, onCreated }: Props) => {
     setPlatform(null)
     setMoodleCourse(null)
     setMoodleCourses([])
+    setMoodleCategory(null)
+    setMoodleCategories([])
     setError('')
   }
 
@@ -118,6 +135,11 @@ const CreateCourseDialog = ({ open, element, onClose, onCreated }: Props) => {
 
       return
     }
+    if (mode === 'automatic' && !moodleCategory?.id) {
+      setError('Selecciona la categoría Moodle donde se creará el curso.')
+
+      return
+    }
 
     setSaving(true)
     setError('')
@@ -126,7 +148,10 @@ const CreateCourseDialog = ({ open, element, onClose, onCreated }: Props) => {
       if (mode !== 'disabled' && platform && moodleCourse) {
         payload.web_platform_id = platform.id
         if (mode === 'manual') payload.moodle_course_id = moodleCourse.id
-        if (mode === 'automatic') payload.moodle_source_course_id = moodleCourse.id
+        if (mode === 'automatic') {
+          payload.moodle_source_course_id = moodleCourse.id
+          payload.moodle_category_id = moodleCategory!.id
+        }
       }
 
       const response = await register(element.id, payload)
@@ -189,10 +214,27 @@ const CreateCourseDialog = ({ open, element, onClose, onCreated }: Props) => {
               onChange={(_, value) => {
                 setPlatform(value)
                 setMoodleCourse(null)
+                setMoodleCategory(null)
                 setError('')
               }}
               disabled={saving}
               renderInput={params => <CustomTextField {...params} label='Plataforma Moodle' required />}
+            />
+          ) : null}
+
+          {mode === 'automatic' ? (
+            <Autocomplete
+              value={moodleCategory}
+              options={moodleCategories}
+              loading={loadingCourses}
+              getOptionLabel={option => option.path || option.name}
+              isOptionEqualToValue={(option, value) => option.id === value.id}
+              onChange={(_, value) => {
+                setMoodleCategory(value)
+                setError('')
+              }}
+              disabled={saving || loadingCourses || !platform}
+              renderInput={params => <CustomTextField {...params} label='Categoría Moodle' required />}
             />
           ) : null}
 

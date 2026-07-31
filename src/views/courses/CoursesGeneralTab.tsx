@@ -26,6 +26,7 @@ import {
   editCourse,
   getCourse,
   getNextFormativeAction,
+  getMoodlePlatformCategories,
   getMoodlePlatformCourses,
   getMoodleTemplates,
   saveMoodleTemplate,
@@ -38,6 +39,14 @@ type Mode = 'view' | 'edit' | 'create'
 type TranslationFunction = (key: string) => string
 type List = { id: number; name: string; surname?: string }
 type MoodleCourseOption = { id: number; fullname: string; shortname: string }
+type MoodleCategoryOption = {
+  id: number
+  name: string
+  path: string
+  parent: number
+  idnumber: string
+  visible: boolean
+}
 
 const teacherLabel = (teacher: List | null | undefined) =>
   [teacher?.name, teacher?.surname].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim()
@@ -164,6 +173,7 @@ type FormValues = {
   web_platform: List | null
   moodle_mode: 'disabled' | 'manual' | 'automatic'
   moodle_course: MoodleCourseOption | null
+  moodle_category: MoodleCategoryOption | null
 
   nebrija: boolean
 
@@ -266,6 +276,7 @@ const CoursesGeneralTab: React.FC<CoursesGeneralTabProps> = ({ open, mode, cours
       web_platform: null,
       moodle_mode: 'disabled',
       moodle_course: null,
+      moodle_category: null,
 
       nebrija: false,
 
@@ -322,7 +333,10 @@ const CoursesGeneralTab: React.FC<CoursesGeneralTabProps> = ({ open, mode, cours
   const selectedPlatform = watch('web_platform')
   const selectedTrainingAction = watch('training_action')
   const [moodleCourses, setMoodleCourses] = useState<MoodleCourseOption[]>([])
+  const [moodleCategories, setMoodleCategories] = useState<MoodleCategoryOption[]>([])
   const [moodleCoursesLoading, setMoodleCoursesLoading] = useState(false)
+  const [moodleCategoriesLoading, setMoodleCategoriesLoading] = useState(false)
+  const [moodleProvisioningVersion, setMoodleProvisioningVersion] = useState(2)
   const [moodleSyncStatus, setMoodleSyncStatus] = useState('disconnected')
   const [moodleSyncError, setMoodleSyncError] = useState('')
 
@@ -341,27 +355,46 @@ const CoursesGeneralTab: React.FC<CoursesGeneralTabProps> = ({ open, mode, cours
   useEffect(() => {
     if (moodleMode === 'disabled' || !selectedPlatform?.id) {
       setMoodleCourses([])
+      setMoodleCategories([])
 
       return
     }
     let cancelled = false
     setMoodleCoursesLoading(true)
+    setMoodleCategoriesLoading(moodleMode === 'automatic' && moodleProvisioningVersion >= 2)
     Promise.all([
       getMoodlePlatformCourses(selectedPlatform.id),
-      selectedTrainingAction?.id ? getMoodleTemplates(selectedTrainingAction.id) : Promise.resolve(null)
+      selectedTrainingAction?.id ? getMoodleTemplates(selectedTrainingAction.id) : Promise.resolve(null),
+      moodleMode === 'automatic' && moodleProvisioningVersion >= 2
+        ? getMoodlePlatformCategories(selectedPlatform.id)
+        : Promise.resolve(null)
     ])
-      .then(([coursesResponse, templatesResponse]) => {
+      .then(([coursesResponse, templatesResponse, categoriesResponse]) => {
         if (cancelled) return
         const courses = coursesResponse.data?.data?.courses ?? []
         setMoodleCourses(courses)
+        const categories = categoriesResponse?.data?.data?.categories ?? []
+        setMoodleCategories(categories)
         const templates = templatesResponse?.data?.data?.templates ?? []
         const configured = templates.find((item: any) => Number(item.web_platform_id) === Number(selectedPlatform.id))
         if (moodleMode === 'automatic' && configured) {
           setValue('moodle_course', courses.find((item: MoodleCourseOption) => item.id === Number(configured.moodle_course_id)) ?? null)
         }
+        const selectedCategory = watch('moodle_category')
+        if (moodleMode === 'automatic' && selectedCategory?.id) {
+          setValue(
+            'moodle_category',
+            categories.find((item: MoodleCategoryOption) => item.id === Number(selectedCategory.id)) ?? selectedCategory
+          )
+        }
       })
       .catch(error => handleError(error, logout))
-      .finally(() => !cancelled && setMoodleCoursesLoading(false))
+      .finally(() => {
+        if (!cancelled) {
+          setMoodleCoursesLoading(false)
+          setMoodleCategoriesLoading(false)
+        }
+      })
 
     return () => {
       cancelled = true
@@ -420,6 +453,9 @@ const CoursesGeneralTab: React.FC<CoursesGeneralTabProps> = ({ open, mode, cours
 
     if (mode === 'create') {
       reset(defaultValues)
+      setMoodleProvisioningVersion(2)
+      setMoodleCourses([])
+      setMoodleCategories([])
       setMoodleSyncStatus('disconnected')
       setMoodleSyncError('')
       setLoading(false)
@@ -449,6 +485,7 @@ const CoursesGeneralTab: React.FC<CoursesGeneralTabProps> = ({ open, mode, cours
         onLoaded?.(c)
         setMoodleSyncStatus(c.moodle_sync_status ?? 'disconnected')
         setMoodleSyncError(c.moodle_sync_error ?? '')
+        setMoodleProvisioningVersion(Number(c.moodle_provisioning_version ?? 1))
 
         // En EDIT/VIEW normalmente no se edita group
         setGroupEditable(false)
@@ -463,6 +500,16 @@ const CoursesGeneralTab: React.FC<CoursesGeneralTabProps> = ({ open, mode, cours
           moodle_mode: c.moodle_mode ?? 'disabled',
           moodle_course: c.moodle_course_id
             ? { id: Number(c.moodle_course_id), fullname: c.moodle_shortname ?? `Moodle #${c.moodle_course_id}`, shortname: c.moodle_shortname ?? '' }
+            : null,
+          moodle_category: c.moodle_category_id
+            ? {
+                id: Number(c.moodle_category_id),
+                name: `Categoría #${c.moodle_category_id}`,
+                path: `Categoría #${c.moodle_category_id}`,
+                parent: 0,
+                idnumber: '',
+                visible: true
+              }
             : null,
 
           nebrija: String(c.nebrija ?? '0') === '1',
@@ -535,6 +582,10 @@ const CoursesGeneralTab: React.FC<CoursesGeneralTabProps> = ({ open, mode, cours
       formData.append('teacher_id', data.teacher?.id != null ? String(data.teacher.id) : '')
       formData.append('web_platform_id', data.web_platform?.id != null ? String(data.web_platform.id) : '')
       formData.append('moodle_mode', data.moodle_mode)
+      formData.append('moodle_category_id', data.moodle_category?.id != null ? String(data.moodle_category.id) : '')
+      if (data.moodle_mode === 'manual' && data.moodle_course?.id) {
+        formData.append('moodle_course_id', String(data.moodle_course.id))
+      }
 
       formData.append('nebrija', data.nebrija ? '1' : '0')
 
@@ -573,6 +624,9 @@ const CoursesGeneralTab: React.FC<CoursesGeneralTabProps> = ({ open, mode, cours
         if (!data.training_action?.id || !data.web_platform?.id || !data.moodle_course?.id) {
           throw new Error('Selecciona la plataforma y el curso base de Moodle.')
         }
+        if (moodleProvisioningVersion >= 2 && !data.moodle_category?.id) {
+          throw new Error('Selecciona la categoría Moodle donde se creará el curso.')
+        }
         await saveMoodleTemplate(data.training_action.id, {
           web_platform_id: data.web_platform.id,
           moodle_course_id: data.moodle_course.id
@@ -606,12 +660,9 @@ const CoursesGeneralTab: React.FC<CoursesGeneralTabProps> = ({ open, mode, cours
           throw new Error(response.data?.message || 'No se ha podido guardar el curso.')
         }
         if (response.data?.success) {
-          if (data.moodle_mode === 'manual' && data.web_platform?.id && data.moodle_course?.id) {
-            await linkMoodleCourse(courseId, {
-              web_platform_id: data.web_platform.id,
-              moodle_course_id: data.moodle_course.id
-            })
-          }
+          const savedCourse = response.data?.data?.course
+          setMoodleSyncStatus(savedCourse?.moodle_sync_status ?? 'pending')
+          setMoodleSyncError(savedCourse?.moodle_sync_error ?? '')
           toast.success(response.data.message ?? t('Saved'))
           dispatch(generalActions.addFilterButtonClickCount())
         }
@@ -850,6 +901,7 @@ const CoursesGeneralTab: React.FC<CoursesGeneralTabProps> = ({ open, mode, cours
                   onChange={(_, value) => {
                     field.onChange(value?.id ?? 'disabled')
                     setValue('moodle_course', null)
+                    setValue('moodle_category', null)
                   }}
                   options={[...moodleModeOptions]}
                   getOptionLabel={option => option.name}
@@ -871,7 +923,11 @@ const CoursesGeneralTab: React.FC<CoursesGeneralTabProps> = ({ open, mode, cours
               render={({ field }) => (
                 <Autocomplete
                   value={field.value}
-                  onChange={(_, v) => field.onChange(v)}
+                  onChange={(_, v) => {
+                    field.onChange(v)
+                    setValue('moodle_course', null)
+                    setValue('moodle_category', null)
+                  }}
                   options={webPlatformsList}
                   getOptionLabel={o => o?.name ?? ''}
                   isOptionEqualToValue={(o, v) => o.id === v.id}
@@ -910,6 +966,34 @@ const CoursesGeneralTab: React.FC<CoursesGeneralTabProps> = ({ open, mode, cours
                         {...params}
                         label={moodleMode === 'automatic' ? 'Curso base Moodle' : 'Curso Moodle existente'}
                         helperText={moodleMode === 'automatic' ? 'Se copiará sin usuarios ni matrículas.' : undefined}
+                      />
+                    )}
+                  />
+                )}
+              />
+            </Grid>
+          )}
+
+          {moodleMode === 'automatic' && moodleProvisioningVersion >= 2 && (
+            <Grid item xs={12} md={4}>
+              <Controller
+                name='moodle_category'
+                control={control}
+                render={({ field }) => (
+                  <Autocomplete
+                    value={field.value}
+                    onChange={(_, value) => field.onChange(value)}
+                    options={moodleCategories}
+                    loading={moodleCategoriesLoading}
+                    getOptionLabel={option => option.path || option.name}
+                    isOptionEqualToValue={(option, value) => option.id === value.id}
+                    disabled={disabled || !selectedPlatform?.id}
+                    renderInput={params => (
+                      <CustomTextField
+                        {...params}
+                        label='Categoría Moodle'
+                        required={moodleProvisioningVersion >= 2}
+                        helperText='El curso se creará dentro de esta categoría.'
                       />
                     )}
                   />

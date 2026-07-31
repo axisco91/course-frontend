@@ -509,6 +509,7 @@ export const createWebPlatform = data => authInstance.post(`/web-platforms`, dat
 export const editWebPlatform = (id, data) => authInstance.put(`/web-platforms/${id}`, data)
 export const deleteWebPlatform = id => authInstance.delete(`web-platforms/${id}`)
 export const getMoodlePlatformCourses = platformId => authInstance.get(`/moodle/platforms/${platformId}/courses`)
+export const getMoodlePlatformCategories = platformId => authInstance.get(`/moodle/platforms/${platformId}/categories`)
 export const getMoodlePlatformDiagnostics = platformId => authInstance.get(`/moodle/platforms/${platformId}/diagnostics`)
 export const getMoodleTemplates = trainingActionId => authInstance.get(`/moodle/training-actions/${trainingActionId}/templates`)
 export const saveMoodleTemplate = (trainingActionId, data) => authInstance.put(`/moodle/training-actions/${trainingActionId}/template`, data)

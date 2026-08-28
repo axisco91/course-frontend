@@ -15,9 +15,10 @@ import { trainingContractIncidenceActions } from 'src/reducers/trainingContracts
 type Props = {
   open: boolean
   trainingContractId: number | null
+  refreshKey?: number
 }
 
-const HistoricalTable = ({ open, trainingContractId }: Props) => {
+const HistoricalTable = ({ open, trainingContractId, refreshKey = 0 }: Props) => {
   const dispatch = useDispatch()
   const { handleError } = useErrorHandler()
   const { logout } = useContext(AuthContext)
@@ -40,6 +41,7 @@ const HistoricalTable = ({ open, trainingContractId }: Props) => {
 
   const fetchRows = useCallback(async () => {
     if (!open || !trainingContractId) return
+    void refreshKey
 
     const myReqId = ++reqIdRef.current
     setLoading(true)
@@ -72,7 +74,7 @@ const HistoricalTable = ({ open, trainingContractId }: Props) => {
     } finally {
       if (myReqId === reqIdRef.current) setLoading(false)
     }
-  }, [open, trainingContractId, paginationModel.page, paginationModel.pageSize, sortModel])
+  }, [open, trainingContractId, paginationModel.page, paginationModel.pageSize, sortModel, refreshKey])
 
   useEffect(() => {
     fetchRows()

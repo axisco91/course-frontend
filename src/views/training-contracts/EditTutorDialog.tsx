@@ -1,8 +1,23 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { Button, Dialog, DialogActions, DialogContent, DialogTitle, Grid } from '@mui/material'
-import CustomTextField from 'src/@core/components/mui/text-field'
+import { useSelector } from 'react-redux'
 import toast from 'react-hot-toast'
+import Autocomplete from 'src/views/components/GuardedAutocomplete'
+import CustomTextField from 'src/@core/components/mui/text-field'
 import { updateTutorInfo } from 'src/api/api'
+import { RootState } from 'src/reducers/types/types'
+
+type Teacher = {
+  id: number
+  name: string
+  surname?: string
+  dni?: string
+}
+
+const teacherLabel = (teacher: Teacher | null) =>
+  [teacher?.name, teacher?.surname].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim()
+
+const normalize = (value: unknown) => String(value ?? '').trim().toLocaleLowerCase()
 
 const EditTutorDialog = ({
   open,
@@ -15,20 +30,28 @@ const EditTutorDialog = ({
   onClose: () => void
   onSaved?: () => Promise<void> | void
 }) => {
-  console.log(element)
-  const [trainingTutor, setTrainingTutor] = useState('')
-  const [trainingTutorDni, setTrainingTutorDni] = useState('')
+  const teachers = useSelector((state: RootState) => state.teacher.teachers) as Teacher[]
+  const teacherOptions = useMemo(() => (Array.isArray(teachers) ? teachers : []), [teachers])
+  const [selectedTeacher, setSelectedTeacher] = useState<Teacher | null>(null)
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     if (!open) return
-    setTrainingTutor(String(element?.training_tutor ?? ''))
-    setTrainingTutorDni(String(element?.training_tutor_dni ?? ''))
-  }, [open, element])
+
+    const tutorDni = normalize(element?.training_tutor_dni)
+    const tutorName = normalize(element?.training_tutor)
+    const teacher = teacherOptions.find(option => {
+      if (tutorDni && normalize(option.dni) === tutorDni) return true
+
+      return tutorName && normalize(teacherLabel(option)) === tutorName
+    })
+
+    setSelectedTeacher(teacher ?? null)
+  }, [open, element, teacherOptions])
 
   const save = async () => {
     if (!element?.id) return
-    if (!trainingTutor.trim() || !trainingTutorDni.trim()) {
+    if (!selectedTeacher || !String(selectedTeacher.dni ?? '').trim()) {
       toast.error('Tutor y DNI del tutor son obligatorios')
 
       return
@@ -36,13 +59,10 @@ const EditTutorDialog = ({
 
     setSaving(true)
     try {
-      // ✅ aquí luego llamaremos a la API: updateTutorInfo(element.id, { training_tutor, training_tutor_dni })
-      // de momento, lo dejamos preparado:
-      await updateTutorInfo(element.id, { training_tutor: trainingTutor, training_tutor_dni: trainingTutorDni })
-
-      // Simulación mínima para no romper ahora:
-      // (cuando metamos API, borra estas 2 líneas)
-      await new Promise(r => setTimeout(r, 0))
+      await updateTutorInfo(element.id, {
+        training_tutor: teacherLabel(selectedTeacher),
+        training_tutor_dni: String(selectedTeacher.dni)
+      })
 
       toast.success('Tutor guardado')
       await onSaved?.()
@@ -67,12 +87,14 @@ const EditTutorDialog = ({
       <DialogContent sx={{ pt: 4 }}>
         <Grid container spacing={4}>
           <Grid item xs={12}>
-            <CustomTextField
-              fullWidth
-              label='Tutor'
-              value={trainingTutor}
-              onChange={e => setTrainingTutor(e.target.value)}
+            <Autocomplete
+              value={selectedTeacher}
+              onChange={(_, value) => setSelectedTeacher(value)}
+              options={teacherOptions}
+              getOptionLabel={teacherLabel}
+              isOptionEqualToValue={(option, value) => Number(option.id) === Number(value.id)}
               disabled={saving}
+              renderInput={params => <CustomTextField {...params} label='Nombre y apellidos' />}
             />
           </Grid>
 
@@ -80,8 +102,8 @@ const EditTutorDialog = ({
             <CustomTextField
               fullWidth
               label='DNI del Tutor'
-              value={trainingTutorDni}
-              onChange={e => setTrainingTutorDni(e.target.value)}
+              value={selectedTeacher?.dni ?? ''}
+              inputProps={{ readOnly: true }}
               disabled={saving}
             />
           </Grid>

@@ -861,6 +861,22 @@ const TrainingContractGeneralTab: React.FC<Props> = ({ open, mode, trainingContr
       if (mode === 'create') {
         if (cloneId) fd.append('clone_id', String(cloneId))
         const res = await createTrainingContract(fd)
+        const createdContract =
+          res?.data?.data?.training_contract ?? res?.data?.data?.trainingContract ?? res?.data?.data ?? null
+        const createdContractId = Number(createdContract?.id)
+
+        if (!Number.isFinite(createdContractId) || createdContractId <= 0) {
+          throw new Error('Created training contract id not found')
+        }
+
+        setLoadedContractId(createdContractId)
+        setLoadedContractData(createdContract)
+        dispatch(
+          trainingContractActions.openModal({
+            mode: 'edit',
+            trainingContractId: createdContractId
+          })
+        )
         toast.success(res.data?.message ?? t('Saved'))
         dispatch(generalActions.addFilterButtonClickCount())
       } else if (mode === 'edit' && trainingContractId) {

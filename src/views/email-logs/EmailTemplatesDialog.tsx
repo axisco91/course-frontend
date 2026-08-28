@@ -53,7 +53,8 @@ const variableLabels: Record<string, string> = {
   remaining_hours: 'Horas pendientes',
   remaining_units: 'Contenidos pendientes',
   remaining_activities: 'Actividades pendientes',
-  progress_message: 'Resumen del progreso'
+  progress_message: 'Resumen del progreso',
+  company_tutor_name: 'Tutor laboral de la empresa'
 }
 
 const previewValues: Record<string, string> = {
@@ -70,7 +71,8 @@ const previewValues: Record<string, string> = {
   remaining_hours: '12',
   remaining_units: '2',
   remaining_activities: '1',
-  progress_message: 'Actualmente te quedan 12 horas de conexión, 2 contenidos y 1 actividad por completar.'
+  progress_message: 'Actualmente te quedan 12 horas de conexión, 2 contenidos y 1 actividad por completar.',
+  company_tutor_name: 'Ezequiel'
 }
 
 const replacePreviewVariables = (value: string) =>

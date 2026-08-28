@@ -319,6 +319,10 @@ export const getTrainingContracts = data => authInstance.get('/training-contract
 export const getTrainingContractsExportExcel = data =>
   authInstanceExport.get('/training-contracts/export-excel', { params: data })
 export const getTrainingContract = id => authInstance.get(`/training-contracts/${id}`)
+export const getTrainingContractCommunicationPreview = (id, type) =>
+  authInstance.get(`/training-contracts/${id}/communications/${type}/preview`)
+export const sendTrainingContractCommunication = (id, type, data) =>
+  authInstance.post(`/training-contracts/${id}/communications/${type}`, data)
 export const createTrainingContract = data => authInstance.post(`/training-contracts`, data)
 export const editTrainingContract = (id, data) => authInstance.put(`/training-contracts/${id}`, data)
 export const deleteTrainingContract = id => authInstance.delete(`training-contracts/${id}`)

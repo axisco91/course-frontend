@@ -80,7 +80,9 @@ type ConfirmState = {
   loading?: boolean
   confirmText?: string
   cancelText?: string
-  onConfirm?: () => Promise<void> | void
+  showTolerance?: boolean
+  tolerancePercentage?: string
+  onConfirm?: (tolerancePercentage?: number) => Promise<void> | void
 }
 
 // ✅ estados de los diálogos externos
@@ -164,15 +166,27 @@ const TrainingContractFormationTab: React.FC<{ open: boolean }> = ({ open }) => 
       onConfirm: cfg.onConfirm
     })
   }, [])
+  const toleranceText = String(confirm.tolerancePercentage ?? '').trim()
+  const parsedTolerance = Number(toleranceText.replace(',', '.'))
+  const isToleranceInvalid = Boolean(
+    confirm.showTolerance &&
+      (toleranceText === '' || !Number.isFinite(parsedTolerance) || parsedTolerance < 0 || parsedTolerance > 100)
+  )
   const runConfirm = useCallback(async () => {
+    const tolerance = confirm.showTolerance ? parsedTolerance : undefined
+
+    if (isToleranceInvalid) {
+      return
+    }
+
     try {
       setConfirm(prev => ({ ...prev, loading: true }))
-      await confirm.onConfirm?.()
+      await confirm.onConfirm?.(tolerance)
       closeConfirm()
     } catch {
       closeConfirm()
     }
-  }, [confirm, closeConfirm])
+  }, [confirm, closeConfirm, isToleranceInvalid, parsedTolerance])
 
   // ✅ SIN mode: se deshabilita todo si la tab NO está abierta
   const disabledAll = !open
@@ -293,19 +307,27 @@ const TrainingContractFormationTab: React.FC<{ open: boolean }> = ({ open }) => 
   }, [selectedContract?.on_leave_date])
 
   // Calcular itinerario
-  const doCalculate = useCallback(async () => {
+  const doCalculate = useCallback(async (tolerancePercentage: number) => {
     if (!id) return
     setLoadingCalc(true)
     try {
-      const response = await calculateTrainingContractHours(id, {})
+      const response = await calculateTrainingContractHours(id, { tolerance_percentage: tolerancePercentage })
       if (response?.status !== 200) {
         toast.error(response?.data?.message ?? 'No se pudo actualizar el itinerario.')
 
         return
       }
 
-      toast.success('Itinerario actualizado')
       const data = response.data ?? {}
+
+      if (data.compacted_courses > 0) {
+        toast.success(
+          `Itinerario ajustado utilizando un ${safeNum(data.effective_tolerance_percentage)} % de tolerancia en ${data.compacted_courses} cursos`
+        )
+      } else {
+        toast.success('Itinerario actualizado sin aplicar tolerancia')
+      }
+      if (data.adjustment_warning) toast(data.adjustment_warning)
 
       dispatch(trainingContractActions.setFormationHours(data.total_hours))
       dispatch(trainingContractActions.setFormativeHoursFirstYear(data.formative_hours_first_year))
@@ -320,9 +342,9 @@ const TrainingContractFormationTab: React.FC<{ open: boolean }> = ({ open }) => 
 
       dispatch(trainingContractActions.setCalculatedHours(true))
       await loadFormation()
-    } catch (e) {
+    } catch (e: any) {
       handleErrorRef.current(e, logoutRef.current)
-      toast.error('No se pudo actualizar el itinerario.')
+      toast.error(e?.response?.data?.message ?? 'No se pudo actualizar el itinerario.')
     } finally {
       setLoadingCalc(false)
     }
@@ -332,10 +354,13 @@ const TrainingContractFormationTab: React.FC<{ open: boolean }> = ({ open }) => 
     if (!id) return
     openConfirm({
       title: '¿Actualizar itinerario?',
-      description: 'Se recalcularán las horas y las fechas del itinerario.',
+      description:
+        'Se aplicará solo la tolerancia imprescindible, priorizando los cursos de más horas para mantener más exactos los cursos cortos.',
+      showTolerance: true,
+      tolerancePercentage: '25',
       confirmText: 'Actualizar',
       cancelText: 'Cancelar',
-      onConfirm: doCalculate
+      onConfirm: (tolerancePercentage = 25) => doCalculate(tolerancePercentage)
     })
   }, [id, openConfirm, doCalculate])
 
@@ -521,9 +546,12 @@ const TrainingContractFormationTab: React.FC<{ open: boolean }> = ({ open }) => 
     setEditTutor({ open: true, element })
   }, [])
 
-  const onSavedDates = useCallback(async () => {
+  const onSavedDates = useCallback(async (updatedElement: ElementRow) => {
+    if (updatedElement?.id) {
+      dispatch(trainingContractActions.replaceElement(updatedElement))
+    }
     await loadFormation()
-  }, [loadFormation])
+  }, [dispatch, loadFormation])
 
   const onSavedTutor = useCallback(async () => {
     await loadFormation()
@@ -697,12 +725,28 @@ const TrainingContractFormationTab: React.FC<{ open: boolean }> = ({ open }) => 
         maxWidth='xs'
       >
         <DialogTitle>{confirm.title}</DialogTitle>
-        {confirm.description ? <DialogContent>{confirm.description}</DialogContent> : null}
+        {confirm.description || confirm.showTolerance ? (
+          <DialogContent>
+            {confirm.description ? <Typography sx={{ mb: confirm.showTolerance ? 3 : 0 }}>{confirm.description}</Typography> : null}
+            {confirm.showTolerance ? (
+              <CustomTextField
+                fullWidth
+                type='number'
+                label='Tolerancia máxima'
+                value={confirm.tolerancePercentage ?? ''}
+                onChange={event => setConfirm(prev => ({ ...prev, tolerancePercentage: event.target.value }))}
+                inputProps={{ min: 0, max: 100, step: 'any' }}
+                error={isToleranceInvalid}
+                helperText='Introduce un valor entre 0 y 100.'
+              />
+            ) : null}
+          </DialogContent>
+        ) : null}
         <DialogActions>
           <Button onClick={closeConfirm} disabled={Boolean(confirm.loading)}>
             {confirm.cancelText ?? 'Cancelar'}
           </Button>
-          <Button variant='contained' onClick={runConfirm} disabled={Boolean(confirm.loading)}>
+          <Button variant='contained' onClick={runConfirm} disabled={Boolean(confirm.loading) || isToleranceInvalid}>
             {confirm.loading ? '...' : confirm.confirmText ?? 'Aceptar'}
           </Button>
         </DialogActions>
@@ -865,19 +909,22 @@ const TrainingContractFormationTab: React.FC<{ open: boolean }> = ({ open }) => 
       <Card sx={{ mb: 6 }}>
         <CardContent>
           <Grid container spacing={2} sx={{ mb: 2 }}>
-            <Grid item xs={12} md={4}>
+            <Grid item xs={12} md={4.5} sx={{ textAlign: 'center' }}>
               <Typography sx={{ color: 'primary.main' }}>Especialidades / Certificados</Typography>
             </Grid>
-            <Grid item xs={12} md={2}>
+            <Grid item xs={12} md={1} sx={{ textAlign: 'center' }}>
               <Typography sx={{ color: 'primary.main' }}>Presencial</Typography>
             </Grid>
-            <Grid item xs={12} md={2}>
+            <Grid item xs={12} md={1.5} sx={{ textAlign: 'center' }}>
               <Typography sx={{ color: 'primary.main' }}>Teleformación</Typography>
             </Grid>
-            <Grid item xs={12} md={2}>
+            <Grid item xs={12} md={2} sx={{ textAlign: 'center' }}>
               <Typography sx={{ color: 'primary.main' }}>Fechas</Typography>
             </Grid>
-            <Grid item xs={12} md={2}>
+            <Grid item xs={12} md={1} sx={{ textAlign: 'center' }}>
+              <Typography sx={{ color: 'primary.main' }}>Días lectivos</Typography>
+            </Grid>
+            <Grid item xs={12} md={2} sx={{ textAlign: 'center' }}>
               <Typography sx={{ color: 'primary.main' }}>Acciones</Typography>
             </Grid>
           </Grid>
@@ -921,26 +968,35 @@ const TrainingContractFormationTab: React.FC<{ open: boolean }> = ({ open }) => 
                   }}
                 >
                   <Grid container spacing={2} alignItems='center'>
-                    <Grid item xs={12} md={4}>
+                    <Grid item xs={12} md={4.5} sx={{ textAlign: 'center' }}>
                       <Typography fontWeight={boldName ? 700 : 400}>{name}</Typography>
                     </Grid>
 
-                    <Grid item xs={12} md={2}>
+                    <Grid item xs={12} md={1} sx={{ textAlign: 'center' }}>
                       <Typography>Presencial: {f2f}</Typography>
                     </Grid>
 
-                    <Grid item xs={12} md={2}>
+                    <Grid item xs={12} md={1.5} sx={{ textAlign: 'center' }}>
                       <Typography>Teleformación: {tele}</Typography>
                     </Grid>
 
-                    <Grid item xs={12} md={2}>
+                    <Grid item xs={12} md={2} sx={{ textAlign: 'center' }}>
                       <Typography variant='body2' color='text.secondary'>
                         {dateText}
                       </Typography>
                     </Grid>
 
+                    <Grid item xs={12} md={1} sx={{ textAlign: 'center' }}>
+                      <Typography>{element?.beginning && element?.end ? safeNum(element.assigned_training_days) : '—'}</Typography>
+                    </Grid>
+
                     {/* ✅ Acciones: (drag + calendar + edit tutor + plus/eye + trash + lock) */}
-                    <Grid item xs={12} md={2} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Grid
+                      item
+                      xs={12}
+                      md={2}
+                      sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1 }}
+                    >
                       <IconButton className='drag-handle' size='small' title='Mover'>
                         <Icon icon='tabler:menu-2' />
                       </IconButton>

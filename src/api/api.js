@@ -27,7 +27,7 @@ const getBaseURL = () => {
   const host = window.location.hostname
 
   if (host === 'localhost') {
-    return 'http://127.0.0.1:8000/api'
+    return 'http://127.0.0.1:8001/api'
   }
 
   return 'https://api.academypro.app/api' // producción por defecto

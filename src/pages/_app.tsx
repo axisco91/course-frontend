@@ -279,7 +279,7 @@ const App = (props: ExtendedAppProps) => {
 
         const backendFromEnv = process.env.NEXT_PUBLIC_ASSET_BASE_URL || process.env.NEXT_PUBLIC_BACKEND_URL || ''
         const apiOrigin = (
-          backendFromEnv || (hostname === 'localhost' ? 'http://127.0.0.1:8000' : 'https://api.academypro.app')
+          backendFromEnv || (hostname === 'localhost' ? 'http://127.0.0.1:8001' : 'https://api.academypro.app')
         ).replace(/\/$/, '')
 
         const cleanedValue = value.replace(/^\//, '')

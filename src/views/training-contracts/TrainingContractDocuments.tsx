@@ -6,6 +6,12 @@ import Typography from '@mui/material/Typography'
 import IconButton from '@mui/material/IconButton'
 import Tooltip from '@mui/material/Tooltip'
 import Chip from '@mui/material/Chip'
+import Button from '@mui/material/Button'
+import Dialog from '@mui/material/Dialog'
+import DialogActions from '@mui/material/DialogActions'
+import DialogContent from '@mui/material/DialogContent'
+import DialogTitle from '@mui/material/DialogTitle'
+import TextField from '@mui/material/TextField'
 import { DataGrid, GridRenderCellParams, GridSortModel } from 'src/views/components/DataGrid'
 import { useTranslation } from 'react-i18next'
 import LoadingDialog from 'src/views/components/LoadingDialog'
@@ -13,7 +19,13 @@ import Icon from 'src/@core/components/icon'
 import toast from 'react-hot-toast'
 
 // ✅ API (ajusta nombres si en tu api.ts se llaman distinto)
-import { getContractDocuments, sendDocument, getDocumentStudent } from 'src/api/api'
+import {
+  editTrainingContractDocumentFields,
+  getContractDocuments,
+  getDocumentStudent,
+  getTrainingContract,
+  sendDocument
+} from 'src/api/api'
 
 // ✅ auth/error
 import { useErrorHandler } from 'src/hooks/useErrorHandler'
@@ -60,10 +72,11 @@ const TrainingContractDocuments = ({ open, trainingContractId: trainingContractI
   useEffect(() => void (logoutRef.current = logout), [logout])
 
   // ✅ según tu store: a veces lo guardas en trainingContract.id, otras en selectedTrainingContract.id
-  const tcIdFromStore =
-    (useSelector((s: RootState) => (s as any).trainingContract?.id) as number | null) ??
-    (useSelector((s: RootState) => (s as any).trainingContract?.selectedTrainingContract?.id) as number | null) ??
-    null
+  const directContractId = useSelector((s: RootState) => (s as any).trainingContract?.id) as number | null
+  const selectedContractId = useSelector(
+    (s: RootState) => (s as any).trainingContract?.selectedTrainingContract?.id
+  ) as number | null
+  const tcIdFromStore = directContractId ?? selectedContractId ?? null
 
   const trainingContractId = trainingContractIdProp ?? tcIdFromStore
 
@@ -76,6 +89,12 @@ const TrainingContractDocuments = ({ open, trainingContractId: trainingContractI
   const [loading, setLoading] = useState(false)
   const [rows, setRows] = useState<DocRow[]>([])
   const [total, setTotal] = useState(0)
+  const [contractDocument, setContractDocument] = useState<DocRow | null>(null)
+  const [contractFields, setContractFields] = useState({
+    remuneration: '',
+    remunerationPeriod: '',
+    annualHolidays: ''
+  })
 
   // si tu endpoint no pagina, dejamos “client mode” y listo
   const [paginationModel, setPaginationModel] = useState({ page: 0, pageSize: 10 })
@@ -149,8 +168,8 @@ const TrainingContractDocuments = ({ open, trainingContractId: trainingContractI
     [trainingContractId, fetchDocuments]
   )
 
-  const handleOpenDocument = useCallback(
-    async (row: any) => {
+  const generateDocument = useCallback(
+    async (row: any, fields?: typeof contractFields) => {
       if (!trainingContractId) return
 
       const toastId = toast.loading('Generando documento...')
@@ -163,7 +182,17 @@ const TrainingContractDocuments = ({ open, trainingContractId: trainingContractI
           return
         }
 
-        const res = await getDocumentStudent(viewName, trainingContractId)
+        const res = await getDocumentStudent(
+          viewName,
+          trainingContractId,
+          fields
+            ? {
+                remuneration: fields.remuneration,
+                remuneration_period: fields.remunerationPeriod,
+                annual_holidays: fields.annualHolidays
+              }
+            : undefined
+        )
 
         // 🔎 Detectar si NO es PDF (por ejemplo JSON/HTML de error)
         const ct = res?.headers?.['content-type']
@@ -189,6 +218,72 @@ const TrainingContractDocuments = ({ open, trainingContractId: trainingContractI
     },
     [trainingContractId]
   )
+
+  const handleOpenDocument = useCallback(
+    async (row: DocRow) => {
+      const viewName = String(row?.blade ?? '')
+      if (viewName.includes('ContratoFormacion') || viewName.includes('contratoFormacionAlternancia')) {
+        if (!trainingContractId) return
+
+        setLoading(true)
+        try {
+          const response = await getTrainingContract(trainingContractId)
+          const contract =
+            response?.data?.data?.training_contract ?? response?.data?.data?.trainingContract ?? response?.data?.data ?? null
+          const fields = {
+            remuneration: String(contract?.remuneration ?? ''),
+            remunerationPeriod: String(contract?.remuneration_period ?? ''),
+            annualHolidays: String(contract?.annual_holidays ?? '')
+          }
+
+          if (fields.remuneration.trim() && fields.remunerationPeriod.trim() && fields.annualHolidays.trim()) {
+            generateDocument(row)
+          } else {
+            setContractFields(fields)
+            setContractDocument(row)
+          }
+        } catch (e) {
+          handleErrorRef.current(e, logoutRef.current)
+        } finally {
+          setLoading(false)
+        }
+
+        return
+      }
+
+      generateDocument(row)
+    },
+    [generateDocument, trainingContractId]
+  )
+
+  const closeContractFields = () => setContractDocument(null)
+
+  const confirmContractFields = async () => {
+    if (!contractDocument) return
+    if (!contractFields.remuneration.trim() || !contractFields.remunerationPeriod.trim() || !contractFields.annualHolidays.trim()) {
+      toast.error('Completa los tres campos')
+
+      return
+    }
+
+    if (!trainingContractId) return
+
+    setLoading(true)
+    try {
+      await editTrainingContractDocumentFields(trainingContractId, {
+        remuneration: contractFields.remuneration.trim(),
+        remuneration_period: contractFields.remunerationPeriod.trim(),
+        annual_holidays: contractFields.annualHolidays.trim()
+      })
+      const row = contractDocument
+      setContractDocument(null)
+      await generateDocument(row)
+    } catch (e) {
+      handleErrorRef.current(e, logoutRef.current)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const columns = useMemo(() => {
     return [
@@ -304,6 +399,7 @@ const TrainingContractDocuments = ({ open, trainingContractId: trainingContractI
   }, [rows, paginationModel, sortModel])
 
   return (
+    <Fragment>
     <Card>
       <CardContent>
         <Box sx={{ mb: 3 }}>
@@ -334,6 +430,44 @@ const TrainingContractDocuments = ({ open, trainingContractId: trainingContractI
 
       {loading && <LoadingDialog />}
     </Card>
+
+    <Dialog open={Boolean(contractDocument)} onClose={closeContractFields} fullWidth maxWidth='sm'>
+      <DialogTitle>Datos del contrato de formación en alternancia</DialogTitle>
+      <DialogContent>
+        <TextField
+          autoFocus
+          fullWidth
+          required
+          margin='normal'
+          label='Retribución (15)'
+          value={contractFields.remuneration}
+          onChange={e => setContractFields(current => ({ ...current, remuneration: e.target.value }))}
+        />
+        <TextField
+          fullWidth
+          required
+          margin='normal'
+          label='Periodicidad de la retribución (16)'
+          placeholder='Ej.: mensuales'
+          value={contractFields.remunerationPeriod}
+          onChange={e => setContractFields(current => ({ ...current, remunerationPeriod: e.target.value }))}
+        />
+        <TextField
+          fullWidth
+          required
+          margin='normal'
+          label='Duración de las vacaciones anuales (17)'
+          placeholder='Ej.: 30 días naturales'
+          value={contractFields.annualHolidays}
+          onChange={e => setContractFields(current => ({ ...current, annualHolidays: e.target.value }))}
+        />
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={closeContractFields}>Cancelar</Button>
+        <Button variant='contained' onClick={confirmContractFields}>Generar documento</Button>
+      </DialogActions>
+    </Dialog>
+    </Fragment>
   )
 }
 

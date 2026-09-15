@@ -2,9 +2,10 @@ import { MouseEvent, useEffect, useMemo, useState } from 'react'
 import { Badge, Box, Button, IconButton, List, ListItemButton, ListItemText, Menu, Typography } from '@mui/material'
 import Icon from 'src/@core/components/icon'
 import { getDashboardCalendarEvents } from 'src/api/api'
-import { useDispatch } from 'react-redux'
+import { useDispatch, useSelector } from 'react-redux'
 import { tracingActions } from 'src/reducers/tracings/TracingReducer'
 import { trainingContractActions } from 'src/reducers/trainingContracts/TrainingContractReducer'
+import { RootState } from 'src/reducers/types/types'
 import { useRouter } from 'next/router'
 import dayjs from 'dayjs'
 
@@ -117,6 +118,7 @@ const dedupeCalendarEvents = (items: any[]) => {
 const TracingNotificationDropdown = () => {
   const dispatch = useDispatch()
   const router = useRouter()
+  const filterButtonClickCount = useSelector((state: RootState) => state.general.filterButtonClickCount)
 
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null)
   const [tracings, setTracings] = useState<any[]>([])
@@ -147,7 +149,7 @@ const TracingNotificationDropdown = () => {
     return () => {
       active = false
     }
-  }, [])
+  }, [filterButtonClickCount])
 
   const today = ymd(new Date())
   const pendingToday = useMemo(() => {
@@ -155,12 +157,14 @@ const TracingNotificationDropdown = () => {
       .filter((notification: any) => ymd(notification?.start) === today)
       .filter((notification: any) => !isHiddenTracingViewEvent(notification))
 
-    return dedupeCalendarEvents(eventsToday).sort((a, b) => {
-      const order = getEventOrder(a) - getEventOrder(b)
-      if (order !== 0) return order
+    return dedupeCalendarEvents(eventsToday)
+      .filter((notification: any) => notification?.meta?.messageSent !== true)
+      .sort((a, b) => {
+        const order = getEventOrder(a) - getEventOrder(b)
+        if (order !== 0) return order
 
-      return String(a?.title ?? '').localeCompare(String(b?.title ?? ''), 'es', { sensitivity: 'base' })
-    })
+        return String(a?.title ?? '').localeCompare(String(b?.title ?? ''), 'es', { sensitivity: 'base' })
+      })
   }, [tracings, today])
 
   const open = Boolean(anchorEl)

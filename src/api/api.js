@@ -325,6 +325,8 @@ export const sendTrainingContractCommunication = (id, type, data) =>
   authInstance.post(`/training-contracts/${id}/communications/${type}`, data)
 export const createTrainingContract = data => authInstance.post(`/training-contracts`, data)
 export const editTrainingContract = (id, data) => authInstance.put(`/training-contracts/${id}`, data)
+export const editTrainingContractDocumentFields = (id, data) =>
+  authInstance.put(`/training-contracts/${id}/document-fields`, data)
 export const deleteTrainingContract = id => authInstance.delete(`training-contracts/${id}`)
 export const additionalClauseTrainingContract = (id, data) =>
   authInstance.put(`/training-contracts/update-additional-clause/${id}`, data)

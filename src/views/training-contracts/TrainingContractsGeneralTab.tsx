@@ -57,6 +57,9 @@ type FormValues = {
   company_tutor: string
   company_tutor_dni: string
   center_of_work: string
+  remuneration: string
+  remuneration_period: string
+  annual_holidays: string
 
   disabled: boolean
   youth_guarantee: boolean
@@ -311,6 +314,9 @@ const TrainingContractGeneralTab: React.FC<Props> = ({ open, mode, trainingContr
       company_tutor: '',
       company_tutor_dni: '',
       center_of_work: '',
+      remuneration: '',
+      remuneration_period: '',
+      annual_holidays: '',
 
       disabled: false,
       youth_guarantee: false,
@@ -630,6 +636,9 @@ const TrainingContractGeneralTab: React.FC<Props> = ({ open, mode, trainingContr
       company_tutor: String(sc.company_tutor ?? ''),
       company_tutor_dni: String(sc.company_tutor_dni ?? ''),
       center_of_work: String(sc.center_of_work ?? ''),
+      remuneration: String(sc.remuneration ?? ''),
+      remuneration_period: String(sc.remuneration_period ?? ''),
+      annual_holidays: String(sc.annual_holidays ?? ''),
 
       disabled: Boolean(sc.disabled),
       youth_guarantee: Boolean(sc.youth_guarantee),
@@ -804,6 +813,9 @@ const TrainingContractGeneralTab: React.FC<Props> = ({ open, mode, trainingContr
       fd.append('company_tutor', data.company_tutor ?? '')
       fd.append('company_tutor_dni', data.company_tutor_dni ?? '')
       fd.append('center_of_work', data.center_of_work ?? '')
+      fd.append('remuneration', data.remuneration ?? '')
+      fd.append('remuneration_period', data.remuneration_period ?? '')
+      fd.append('annual_holidays', data.annual_holidays ?? '')
 
       fd.append('occupation_id', data.occupation?.id != null ? String(data.occupation.id) : '')
       fd.append('province_id', data.province?.id != null ? String(data.province.id) : '')
@@ -1753,6 +1765,52 @@ const TrainingContractGeneralTab: React.FC<Props> = ({ open, mode, trainingContr
                       inputProps={{ ...params.inputProps, readOnly: disabledAll }}
                     />
                   )}
+                />
+              )}
+            />
+          </Grid>
+        </Grid>
+
+        <Box sx={{ mb: 4, mt: 10 }}>
+          <Typography variant='h6'>Datos para el contrato de formación en alternancia</Typography>
+        </Box>
+
+        <Grid container spacing={5}>
+          <Grid item xs={12} md={4}>
+            <Controller
+              name='remuneration'
+              control={control}
+              render={({ field }) => (
+                <CustomTextField fullWidth label='Retribución (15)' {...field} disabled={disabledAll} />
+              )}
+            />
+          </Grid>
+          <Grid item xs={12} md={4}>
+            <Controller
+              name='remuneration_period'
+              control={control}
+              render={({ field }) => (
+                <CustomTextField
+                  fullWidth
+                  label='Periodicidad de la retribución (16)'
+                  placeholder='Ej.: mensuales'
+                  {...field}
+                  disabled={disabledAll}
+                />
+              )}
+            />
+          </Grid>
+          <Grid item xs={12} md={4}>
+            <Controller
+              name='annual_holidays'
+              control={control}
+              render={({ field }) => (
+                <CustomTextField
+                  fullWidth
+                  label='Vacaciones anuales (17)'
+                  placeholder='Ej.: 30 días naturales'
+                  {...field}
+                  disabled={disabledAll}
                 />
               )}
             />

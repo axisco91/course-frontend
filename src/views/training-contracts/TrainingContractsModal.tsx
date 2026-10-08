@@ -1,6 +1,7 @@
 import React, { ReactElement, Ref, forwardRef, useCallback, useContext, useEffect, useState } from 'react'
 import {
   Box,
+  Button,
   Dialog,
   DialogContent,
   Fade,
@@ -86,6 +87,7 @@ const TrainingContractsModal: React.FC<TrainingContractsModalProps> = ({
   const { t } = useTranslation()
   const [tab, setTab] = useState(0)
   const [title, setTitle] = useState('')
+  const [currentContract, setCurrentContract] = useState<any | null>(null)
   const dispatch = useDispatch()
   const { handleError } = useErrorHandler()
   const { logout } = useContext(AuthContext)
@@ -105,6 +107,7 @@ const TrainingContractsModal: React.FC<TrainingContractsModalProps> = ({
     if (!open) return
     setTab(0)
     setTitle('')
+    setCurrentContract(null)
   }, [open, trainingContractId])
 
   // sync mode (respect permissions)
@@ -177,8 +180,22 @@ const TrainingContractsModal: React.FC<TrainingContractsModalProps> = ({
 
       const label = [num ? `${t('Contract')} #${num}` : t('Contract'), company, student].filter(Boolean).join(' · ')
       setTitle(String(label ?? '').trim())
+      setCurrentContract(tc)
     },
     [t]
+  )
+
+  const navigateToContract = useCallback(
+    (targetId?: number | null) => {
+      if (!targetId) return
+      dispatch(
+        trainingContractActions.openModal({
+          mode: effectiveMode === 'edit' ? 'edit' : 'view',
+          trainingContractId: Number(targetId)
+        })
+      )
+    },
+    [dispatch, effectiveMode]
   )
 
   return (
@@ -196,10 +213,32 @@ const TrainingContractsModal: React.FC<TrainingContractsModalProps> = ({
       </CustomCloseButton>
 
       <DialogContent sx={{ pt: 6 }}>
-        <Box sx={{ mb: 4, display: 'flex', justifyContent: 'center' }}>
+        <Box sx={{ mb: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3, flexWrap: 'wrap' }}>
+          {!isCreate && (currentContract?.previous_contract_id || currentContract?.next_contract_id) ? (
+            <Button
+              size='small'
+              variant='outlined'
+              startIcon={<Icon icon='tabler:arrow-left' />}
+              disabled={!currentContract?.previous_contract_id}
+              onClick={() => navigateToContract(currentContract?.previous_contract_id)}
+            >
+              Contrato anterior
+            </Button>
+          ) : null}
           <Typography variant='h5' sx={{ fontWeight: 700 }}>
             {isCreate ? t('New training contract') : title || t('Training contract')}
           </Typography>
+          {!isCreate && (currentContract?.previous_contract_id || currentContract?.next_contract_id) ? (
+            <Button
+              size='small'
+              variant='outlined'
+              endIcon={<Icon icon='tabler:arrow-right' />}
+              disabled={!currentContract?.next_contract_id}
+              onClick={() => navigateToContract(currentContract?.next_contract_id)}
+            >
+              Prórroga siguiente
+            </Button>
+          ) : null}
         </Box>
 
         <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ borderBottom: 1, borderColor: 'divider' }}>

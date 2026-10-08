@@ -270,6 +270,7 @@ const TrainingContractGeneralTab: React.FC<Props> = ({ open, mode, trainingContr
   const submitInFlightRef = useRef(false)
 
   const disabledAll = readOnly || loading || saving
+  const firstYearLocked = Boolean(loadedContractData?.is_second_year_contract)
 
   const getStudentFullName = (st: any) => {
     const first = String(st?.name ?? st?.first_name ?? st?.student_name ?? '')
@@ -502,8 +503,10 @@ const TrainingContractGeneralTab: React.FC<Props> = ({ open, mode, trainingContr
     const pp2 = Number(String(p2).replace(',', '.') || 0)
     if (Number.isNaN(a) || Number.isNaN(pp1) || Number.isNaN(pp2)) return
 
-    const first = a === 0 || pp1 === 0 ? 0 : (a * pp1) / 100
-    setValue('bonus_hours_first_year', Number(first.toFixed(2)), { shouldDirty: false })
+    if (!firstYearLocked) {
+      const first = a === 0 || pp1 === 0 ? 0 : (a * pp1) / 100
+      setValue('bonus_hours_first_year', Number(first.toFixed(2)), { shouldDirty: false })
+    }
 
     if (a === 0 || pp2 === 0) {
       setValue('bonus_hours_second_year', 0, { shouldDirty: false })
@@ -512,7 +515,7 @@ const TrainingContractGeneralTab: React.FC<Props> = ({ open, mode, trainingContr
       const rounded = Math.round(second / 5) * 5
       setValue('bonus_hours_second_year', Number(rounded.toFixed(2)), { shouldDirty: false })
     }
-  }, [open, readOnly, annually, p1, p2, setValue])
+  }, [open, readOnly, annually, p1, p2, setValue, firstYearLocked])
 
   // ✅✅ Load Contract (General) + set id in redux + preload elements/planned (optional)
   useEffect(() => {
@@ -1502,7 +1505,7 @@ const TrainingContractGeneralTab: React.FC<Props> = ({ open, mode, trainingContr
                   type='number'
                   label={t('Percentage 1st year')}
                   {...field}
-                  disabled={disabledAll}
+                  disabled={disabledAll || firstYearLocked}
                 />
               )}
             />
@@ -1512,7 +1515,14 @@ const TrainingContractGeneralTab: React.FC<Props> = ({ open, mode, trainingContr
               name='bonus_hours_first_year'
               control={control}
               render={({ field }) => (
-                <CustomTextField fullWidth type='number' label={t('Bonus hours 1st year')} {...field} disabled />
+                <CustomTextField
+                  fullWidth
+                  type='number'
+                  label={t('Bonus hours 1st year')}
+                  {...field}
+                  disabled
+                  helperText={firstYearLocked ? 'Primer año finalizado' : undefined}
+                />
               )}
             />
           </Grid>
@@ -1526,7 +1536,7 @@ const TrainingContractGeneralTab: React.FC<Props> = ({ open, mode, trainingContr
                   type='number'
                   label={t('Real training hours 1st year')}
                   {...field}
-                  disabled={disabledAll}
+                  disabled={disabledAll || firstYearLocked}
                 />
               )}
             />
@@ -1541,7 +1551,7 @@ const TrainingContractGeneralTab: React.FC<Props> = ({ open, mode, trainingContr
                   type='number'
                   label={t('Daily hours 1st year')}
                   {...field}
-                  disabled={disabledAll}
+                  disabled={disabledAll || firstYearLocked}
                 />
               )}
             />

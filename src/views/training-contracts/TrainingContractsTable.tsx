@@ -6,17 +6,25 @@ import Typography from '@mui/material/Typography'
 import Chip from '@mui/material/Chip'
 import IconButton from '@mui/material/IconButton'
 import Tooltip from '@mui/material/Tooltip'
+import Button from '@mui/material/Button'
+import Dialog from '@mui/material/Dialog'
+import DialogActions from '@mui/material/DialogActions'
+import DialogContent from '@mui/material/DialogContent'
+import DialogTitle from '@mui/material/DialogTitle'
+import TextField from '@mui/material/TextField'
 import { DataGrid, GridRenderCellParams, GridSortModel } from 'src/views/components/DataGrid'
 import { useTranslation } from 'react-i18next'
 import LoadingDialog from 'src/views/components/LoadingDialog'
 import { useErrorHandler } from 'src/hooks/useErrorHandler'
 import { AuthContext } from 'src/context/AuthContext'
 import Icon from 'src/@core/components/icon'
+import dayjs from 'dayjs'
+import toast from 'react-hot-toast'
 
 // ✅ CAMBIA ESTO por tu endpoint real
 // Ej: getTrainingActionContracts(trainingActionId, params)
 // o getTrainingContracts(params)
-import { getTrainingContracts } from 'src/api/api'
+import { createTrainingContractRenewal, getTrainingContracts } from 'src/api/api'
 
 // ✅ redux
 import { useDispatch, useSelector } from 'react-redux'
@@ -55,6 +63,9 @@ const TrainingContractsTable = () => {
   const canEliminate = Array.isArray(userPermissions) && userPermissions.includes('eliminate.training_contracts')
   const rowsPerPageLabel = t('Rows per page')
   const ofLabel = t('of')
+  const [renewalSource, setRenewalSource] = useState<any | null>(null)
+  const [renewalEnd, setRenewalEnd] = useState('')
+  const [creatingRenewal, setCreatingRenewal] = useState(false)
 
   const blurActiveElement = () => {
     const el = document.activeElement as HTMLElement | null
@@ -161,6 +172,19 @@ const TrainingContractsTable = () => {
         }
       },
 
+      // Type
+      {
+        flex: 0.15,
+        minWidth: 150,
+        field: 'contract_type',
+        headerName: 'Tipo',
+        headerAlign: 'center',
+        align: 'center',
+        renderCell: (params: GridRenderCellParams) => (
+          <Typography variant='body2'>{params.row?.contract_type ?? 'Contrato inicial'}</Typography>
+        )
+      },
+
       // Provider
       {
         flex: 0.18,
@@ -208,7 +232,7 @@ const TrainingContractsTable = () => {
       // Actions (AL FINAL)
       {
         flex: 0.12,
-        minWidth: 110,
+        minWidth: 150,
         field: 'actions',
         headerName: t('Actions'),
         headerAlign: 'center',
@@ -253,6 +277,22 @@ const TrainingContractsTable = () => {
                     }}
                   >
                     <Icon icon='tabler:pencil' fontSize={20} />
+                  </IconButton>
+                </Tooltip>
+              )}
+
+              {canUpdate && params.row?.can_create_renewal && (
+                <Tooltip title='Crear prórroga' placement='top'>
+                  <IconButton
+                    size='small'
+                    onClick={e => {
+                      e.stopPropagation()
+                      blurActiveElement()
+                      setRenewalSource(params.row)
+                      setRenewalEnd('')
+                    }}
+                  >
+                    <Icon icon='tabler:calendar-plus' fontSize={20} />
                   </IconButton>
                 </Tooltip>
               )}
@@ -327,6 +367,41 @@ const TrainingContractsTable = () => {
     fetchTableData()
   }, [fetchTableData, filterButtonClickCount])
 
+  const renewalStart = renewalSource?.end ? dayjs(renewalSource.end).add(1, 'day').format('YYYY-MM-DD') : ''
+  const maximumRenewalEnd = renewalSource?.maximum_renewal_end ?? ''
+  const renewalEndInvalid =
+    !renewalEnd ||
+    (renewalStart && dayjs(renewalEnd).isBefore(dayjs(renewalStart), 'day')) ||
+    (maximumRenewalEnd && dayjs(renewalEnd).isAfter(dayjs(maximumRenewalEnd), 'day'))
+
+  const handleCreateRenewal = async () => {
+    if (!renewalSource?.id || renewalEndInvalid) return
+
+    setCreatingRenewal(true)
+    try {
+      const response = await createTrainingContractRenewal(renewalSource.id, { end: renewalEnd })
+      const newContract = response?.data?.data?.training_contract
+      setRenewalSource(null)
+      setRenewalEnd('')
+      await fetchTableData()
+      toast.success('Prórroga creada como nuevo contrato')
+
+      if (newContract?.id) {
+        dispatch(trainingContractActions.setId(Number(newContract.id)))
+        dispatch(
+          trainingContractActions.openModal({
+            mode: 'edit',
+            trainingContractId: Number(newContract.id)
+          })
+        )
+      }
+    } catch (error) {
+      handleErrorRef.current(error, logoutRef.current)
+    } finally {
+      setCreatingRenewal(false)
+    }
+  }
+
   const handleSortModel = (model: GridSortModel) => {
     if (!model.length) {
       setSort('desc')
@@ -393,6 +468,37 @@ const TrainingContractsTable = () => {
       </CardContent>
 
       {loading && <LoadingDialog />}
+
+      <Dialog open={Boolean(renewalSource)} onClose={() => !creatingRenewal && setRenewalSource(null)} maxWidth='xs' fullWidth>
+        <DialogTitle>Crear prórroga</DialogTitle>
+        <DialogContent sx={{ pt: '16px !important' }}>
+          <TextField
+            fullWidth
+            label='Fecha de inicio'
+            value={renewalStart}
+            disabled
+            sx={{ mb: 4 }}
+            InputLabelProps={{ shrink: true }}
+          />
+          <TextField
+            fullWidth
+            type='date'
+            label='Nueva fecha de fin'
+            value={renewalEnd}
+            onChange={event => setRenewalEnd(event.target.value)}
+            inputProps={{ min: renewalStart, max: maximumRenewalEnd }}
+            InputLabelProps={{ shrink: true }}
+            error={Boolean(renewalEnd && renewalEndInvalid)}
+            helperText={`Fecha máxima permitida: ${maximumRenewalEnd ? dayjs(maximumRenewalEnd).format('DD/MM/YYYY') : '-'}`}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setRenewalSource(null)} disabled={creatingRenewal}>Cancelar</Button>
+          <Button variant='contained' onClick={handleCreateRenewal} disabled={renewalEndInvalid || creatingRenewal}>
+            Crear prórroga
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Card>
   )
 }

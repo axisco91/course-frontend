@@ -46,6 +46,7 @@ type Option = {
   professional_family_id?: number
   face_to_face_hours?: number
   teletraining_hours?: number
+  previously_passed_in_chain?: boolean
 }
 
 type ProfessionalFamilyOption = {
@@ -374,6 +375,11 @@ const TrainingContractFormationTab: React.FC<{ open: boolean }> = ({ open }) => 
   const addElement = useCallback(
     async (opt: Option, type: 'training_action_id' | 'certification_id') => {
       if (!id || !opt?.value) return
+      if (type === 'training_action_id' && opt.previously_passed_in_chain) {
+        toast.error('Esta especialidad ya fue superada con resultado APTO en esta cadena contractual.')
+
+        return
+      }
       try {
         const formData = new FormData()
         formData.append('id', String(opt.value))
@@ -424,6 +430,12 @@ const TrainingContractFormationTab: React.FC<{ open: boolean }> = ({ open }) => 
     async (_: any, opt: Option | null) => {
       setSelectedSpecialty(opt)
       if (!opt) return
+      if (opt.previously_passed_in_chain) {
+        setSelectedSpecialty(null)
+        toast.error('Esta especialidad ya fue superada con resultado APTO en esta cadena contractual.')
+
+        return
+      }
       await addElement(opt, 'training_action_id')
       setSelectedSpecialty(null)
     },
@@ -869,10 +881,23 @@ const TrainingContractFormationTab: React.FC<{ open: boolean }> = ({ open }) => 
                       options={filteredSpecialties}
                       getOptionLabel={o => o?.label ?? ''}
                       isOptionEqualToValue={(o, v) => Number(o?.value) === Number(v?.value)}
+                      getOptionDisabled={option => Boolean(option.previously_passed_in_chain)}
                       disabled={disabledAll}
                       renderOption={(props, option) => (
-                        <Box component='li' {...props} sx={{ fontWeight: isHighlightedCourseOrigin(option) ? 700 : 400 }}>
+                        <Box
+                          component='li'
+                          {...props}
+                          sx={{
+                            fontWeight: isHighlightedCourseOrigin(option) ? 700 : 400,
+                            color: option.previously_passed_in_chain ? 'error.main' : 'inherit',
+                            '&.Mui-disabled': {
+                              color: option.previously_passed_in_chain ? 'error.main' : undefined,
+                              opacity: option.previously_passed_in_chain ? 0.8 : undefined
+                            }
+                          }}
+                        >
                           {option?.label ?? ''}
+                          {option.previously_passed_in_chain ? ' · Ya superado (APTO)' : ''}
                         </Box>
                       )}
                       renderInput={params => <CustomTextField {...params} placeholder='Selecciona...' />}

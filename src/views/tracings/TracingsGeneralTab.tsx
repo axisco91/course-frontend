@@ -201,6 +201,10 @@ type FormValues = {
   total_activities: number | string
   performed_units: number | string
   total_units: number | string
+  performed_final_exams: number | string
+  total_final_exams: number | string
+  performed_tasks: number | string
+  total_tasks: number | string
   performed_hours: number | string
   total_hours: number | string
   last_connection: string
@@ -332,6 +336,10 @@ const TracingsGeneralTab: React.FC<TracingsGeneralTabProps> = ({ open, mode, tra
       total_activities: '',
       performed_units: 0,
       total_units: '',
+      performed_final_exams: 0,
+      total_final_exams: '',
+      performed_tasks: 0,
+      total_tasks: '',
       performed_hours: 0,
       total_hours: '',
       last_connection: '',
@@ -452,7 +460,7 @@ const TracingsGeneralTab: React.FC<TracingsGeneralTabProps> = ({ open, mode, tra
     const load = async () => {
       setLoading(true)
       try {
-        const res = await getTracing(tracingId)
+        const res = await getTracing(tracingId, { refresh_moodle: 1 })
         if (loadRequestIdRef.current !== requestId) return
 
         const tr = res.data?.data?.tracing ?? res.data?.data ?? res.data?.tracing ?? null
@@ -493,6 +501,12 @@ const TracingsGeneralTab: React.FC<TracingsGeneralTabProps> = ({ open, mode, tra
             tr.course?.training_action?.number_units ??
             tr.course?.trainingAction?.number_units ??
             '',
+          performed_final_exams:
+            tr.performed_final_evaluations ??
+            (Number(tr.number_final_evaluations ?? 0) > 0 && Number(tr.final_test) === 1 ? 1 : 0),
+          total_final_exams: tr.number_final_evaluations ?? 0,
+          performed_tasks: tr.performed_tasks ?? 0,
+          total_tasks: tr.number_tasks ?? 0,
           performed_hours: tr.performed_hours ?? 0,
           total_hours:
             tr.total_hours ??
@@ -1074,8 +1088,8 @@ Enhorabuena por el trabajo realizado y mucho ánimo en este último tramo.`
             />
           </Grid>
 
-          {/* Actividades Realizadas (editable) */}
-          <Grid item xs={12} md={3}>
+          {/* Autoevaluaciones realizadas (editable) */}
+          <Grid item xs={12} sm={6} md={3}>
             <Controller
               name='performed_activities'
               control={control}
@@ -1083,7 +1097,7 @@ Enhorabuena por el trabajo realizado y mucho ánimo en este último tramo.`
                 <CustomTextField
                   fullWidth
                   type='number'
-                  label={t('Performed activities')}
+                  label='Autoevaluaciones realizadas'
                   {...field}
                   disabled={!canEdit}
                 />
@@ -1091,19 +1105,8 @@ Enhorabuena por el trabajo realizado y mucho ánimo en este último tramo.`
             />
           </Grid>
 
-          {/* Actividades Totales (NO editable) */}
-          <Grid item xs={12} md={3}>
-            <Controller
-              name='total_activities'
-              control={control}
-              render={({ field }) => (
-                <CustomTextField fullWidth label={t('Total activities')} {...field} disabled={alwaysDisabledTotals} />
-              )}
-            />
-          </Grid>
-
-          {/* Unidades Realizadas (editable) */}
-          <Grid item xs={12} md={3}>
+          {/* Autoevaluaciones totales (NO editable) */}
+          <Grid item xs={12} sm={6} md={3}>
             <Controller
               name='performed_units'
               control={control}
@@ -1113,13 +1116,68 @@ Enhorabuena por el trabajo realizado y mucho ánimo en este último tramo.`
             />
           </Grid>
 
+          {/* Exámenes finales realizados */}
+          <Grid item xs={12} sm={6} md={3}>
+            <Controller
+              name='performed_final_exams'
+              control={control}
+              render={({ field }) => (
+                <CustomTextField fullWidth type='number' label='Exámenes finales realizados' {...field} disabled />
+              )}
+            />
+          </Grid>
+
+          {/* Exámenes finales totales */}
+          <Grid item xs={12} sm={6} md={3}>
+            <Controller
+              name='performed_tasks'
+              control={control}
+              render={({ field }) => (
+                <CustomTextField fullWidth type='number' label='Tareas realizadas' {...field} disabled />
+              )}
+            />
+          </Grid>
+
+          {/* Unidades Realizadas (editable) */}
+          <Grid item xs={12} sm={6} md={3}>
+            <Controller
+              name='total_activities'
+              control={control}
+              render={({ field }) => (
+                <CustomTextField fullWidth label='Autoevaluaciones totales' {...field} disabled={alwaysDisabledTotals} />
+              )}
+            />
+          </Grid>
+
           {/* Unidades Totales (NO editable) */}
-          <Grid item xs={12} md={3}>
+          <Grid item xs={12} sm={6} md={3}>
             <Controller
               name='total_units'
               control={control}
               render={({ field }) => (
                 <CustomTextField fullWidth label={t('Total units')} {...field} disabled={alwaysDisabledTotals} />
+              )}
+            />
+          </Grid>
+
+          {/* Tareas realizadas */}
+          <Grid item xs={12} sm={6} md={3}>
+            <Controller
+              name='total_final_exams'
+              control={control}
+              render={({ field }) => (
+                <CustomTextField fullWidth type='number' label='Exámenes finales totales' {...field} disabled />
+              )}
+            />
+          </Grid>
+
+          {/* Tareas totales */}
+          <Grid item xs={12} sm={6} md={3}>
+            <Controller
+              name='total_tasks'
+              control={control}
+              render={({ field }) => (
+                <CustomTextField fullWidth type='number' label='Tareas totales' {...field} disabled />
               )}
             />
           </Grid>

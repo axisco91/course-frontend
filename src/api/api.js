@@ -201,6 +201,8 @@ export const getCollaborators = data => authInstance.get('/collaborators', { par
 export const getCourses = data => authInstance.get('/courses', { params: data })
 export const getCoursesExportExcel = data => authInstanceExport.get('/courses/export-excel', { params: data })
 export const getCourse = (id, data) => authInstance.get(`/courses/${id}`, { params: data })
+export const getCourseMoodleModules = id => authInstance.get(`/courses/${id}/moodle/modules`)
+export const updateCourseMoodleModules = (id, modules) => authInstance.put(`/courses/${id}/moodle/modules`, { modules })
 export const createCourse = data => authInstance.post(`/courses`, data)
 export const editCourse = (id, data) => authInstance.put(`/courses/${id}`, data)
 export const deleteCourse = id => authInstance.delete(`courses/${id}`)

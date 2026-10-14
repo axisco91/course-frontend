@@ -22,6 +22,7 @@ import { useTranslation } from 'react-i18next'
 // ✅ Usa tus componentes reales de Course
 import CoursesGeneralTab from './CoursesGeneralTab'
 import CoursesStudentsTable from './CoursesStudentsTable'
+import CoursesMoodleModules from './CoursesMoodleModules'
 import TracingsTable from '../tracings/TracingsTable'
 import TracingsModal from '../tracings/TracingsModal'
 
@@ -115,11 +116,11 @@ const CoursesModel: React.FC<CoursesModalProps> = ({ open, onClose, mode, course
     setModeUi(mode)
   }, [open, mode, canUpdate])
 
-  // si tab Students no disponible, fuerza tab General
+  // Si el curso todavía no existe, solo está disponible General.
   useEffect(() => {
     if (!open) return
-    if ((!studentsEnabled && tab === 1) || (!canReadTracings && tab === 2)) setTab(0)
-  }, [open, studentsEnabled, canReadTracings, tab])
+    if (!studentsEnabled && tab > 0) setTab(0)
+  }, [open, studentsEnabled, tab])
 
   const effectiveMode: Mode = isCreate ? 'create' : canUpdate ? modeUi : 'view'
 
@@ -169,6 +170,7 @@ const CoursesModel: React.FC<CoursesModalProps> = ({ open, onClose, mode, course
           <Tab label={t('General')} />
           <Tab label={t('Students')} disabled={!studentsEnabled} />
           {canReadTracings && <Tab label={t('Tracings')} disabled={!studentsEnabled} />}
+          <Tab label='Moodle' disabled={!studentsEnabled} />
         </Tabs>
 
         {/* ✅ Toggle SOLO en General y NO en create */}
@@ -237,6 +239,11 @@ const CoursesModel: React.FC<CoursesModalProps> = ({ open, onClose, mode, course
             )}
           </TabPanel>
         )}
+        <TabPanel value={tab} index={canReadTracings ? 3 : 2}>
+          {open && studentsEnabled && tab === (canReadTracings ? 3 : 2) && (
+            <CoursesMoodleModules courseId={Number(courseId)} canUpdate={canUpdate} />
+          )}
+        </TabPanel>
       </DialogContent>
       <TracingsModal
         open={openTracingId !== null}

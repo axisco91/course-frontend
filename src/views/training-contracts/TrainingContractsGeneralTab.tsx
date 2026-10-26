@@ -77,6 +77,8 @@ type FormValues = {
   annually_day_hours: number | string
   formation_hours: number | string
 
+  hours_first_year: number | string
+  hours_second_year: number | string
   percentage_first_year: number | string
   bonus_hours_first_year: number | string
   formative_hours_first_year: number | string
@@ -111,6 +113,20 @@ const datePickerLocale = (lng: string) => (lng?.startsWith('es') ? es : enUS)
 
 const schema = (t: (k: string) => string) =>
   yup.object().shape({
+    hours_first_year: yup
+      .number()
+      .transform((value, original) => original === '' ? null : value)
+      .nullable()
+      .typeError('Introduce un número válido')
+      .min(0, 'Las horas no pueden ser negativas')
+      .max(9999999999.99, 'El valor es demasiado alto'),
+    hours_second_year: yup
+      .number()
+      .transform((value, original) => original === '' ? null : value)
+      .nullable()
+      .typeError('Introduce un número válido')
+      .min(0, 'Las horas no pueden ser negativas')
+      .max(9999999999.99, 'El valor es demasiado alto'),
     company: yup.mixed<List>().nullable().required(t('Company is required')),
     student_id: yup.number().nullable().required(t('Student is required')),
     beginning: yup.string().required(t('Contract start date is required')),
@@ -335,6 +351,8 @@ const TrainingContractGeneralTab: React.FC<Props> = ({ open, mode, trainingContr
       annually_day_hours: '',
       formation_hours: totalFormationHours ?? '',
 
+      hours_first_year: '',
+      hours_second_year: '',
       percentage_first_year: 0,
       bonus_hours_first_year: 0,
       formative_hours_first_year: '',
@@ -491,31 +509,34 @@ const TrainingContractGeneralTab: React.FC<Props> = ({ open, mode, trainingContr
 
   // ✅ BONUS horas calculadas
   const annually = watch('annually_day_hours')
+  const hours1 = watch('hours_first_year')
+  const hours2 = watch('hours_second_year')
   const p1 = watch('percentage_first_year')
   const p2 = watch('percentage_second_year')
 
   useEffect(() => {
-    if (!open) return
-    if (readOnly) return
+    if (!open || readOnly) return
+    const calculate = (year: 'first' | 'second', base: number | string, percentage: number | string) => {
+      if (year === 'first' && firstYearLocked) return
+      const hasBase = base !== '' && base != null
+      const baseValue = Number(String(hasBase ? base : annually).replace(',', '.') || 0)
+      const percent = Number(String(percentage).replace(',', '.') || 0)
+      if (!Number.isFinite(baseValue) || !Number.isFinite(percent) || baseValue < 0) return
 
-    const a = Number(String(annually).replace(',', '.') || 0)
-    const pp1 = Number(String(p1).replace(',', '.') || 0)
-    const pp2 = Number(String(p2).replace(',', '.') || 0)
-    if (Number.isNaN(a) || Number.isNaN(pp1) || Number.isNaN(pp2)) return
+      // Preserve saved legacy results until a calculation input changes.
+      if (!hasBase && loadedContractData &&
+        Number(annually || 0) === Number(loadedContractData.annually_day_hours || 0) &&
+        Number(percentage || 0) === Number(loadedContractData[`percentage_${year}_year`] || 0) &&
+        loadedContractData[`hours_${year}_year`] == null) return
 
-    if (!firstYearLocked) {
-      const first = a === 0 || pp1 === 0 ? 0 : (a * pp1) / 100
-      setValue('bonus_hours_first_year', Number(first.toFixed(2)), { shouldDirty: false })
+      const bonus = baseValue * percent / 100
+      setValue(`bonus_hours_${year}_year`, year === 'second'
+        ? Math.round(bonus / 5) * 5
+        : Number(bonus.toFixed(2)), { shouldDirty: false })
     }
-
-    if (a === 0 || pp2 === 0) {
-      setValue('bonus_hours_second_year', 0, { shouldDirty: false })
-    } else {
-      const second = (a * pp2) / 100
-      const rounded = Math.round(second / 5) * 5
-      setValue('bonus_hours_second_year', Number(rounded.toFixed(2)), { shouldDirty: false })
-    }
-  }, [open, readOnly, annually, p1, p2, setValue, firstYearLocked])
+    calculate('first', hours1, p1)
+    calculate('second', hours2, p2)
+  }, [open, readOnly, annually, hours1, hours2, p1, p2, setValue, firstYearLocked, loadedContractData])
 
   // ✅✅ Load Contract (General) + set id in redux + preload elements/planned (optional)
   useEffect(() => {
@@ -659,6 +680,8 @@ const TrainingContractGeneralTab: React.FC<Props> = ({ open, mode, trainingContr
       annually_day_hours: sc.annually_day_hours ?? '',
       formation_hours: totalFormationHours ?? sc.formation_hours ?? '',
 
+      hours_first_year: sc.hours_first_year ?? '',
+      hours_second_year: sc.hours_second_year ?? '',
       percentage_first_year: sc.percentage_first_year ?? 0,
       bonus_hours_first_year: sc.bonus_hours_first_year ?? 0,
       formative_hours_first_year: sc.formative_hours_first_year ?? '',
@@ -841,6 +864,8 @@ const TrainingContractGeneralTab: React.FC<Props> = ({ open, mode, trainingContr
       fd.append('annually_day_hours', String(data.annually_day_hours ?? ''))
       fd.append('formation_hours', String(data.formation_hours ?? ''))
 
+      fd.append('hours_first_year', String(data.hours_first_year ?? ''))
+      fd.append('hours_second_year', String(data.hours_second_year ?? ''))
       fd.append('percentage_first_year', String(data.percentage_first_year ?? 0))
       fd.append('percentage_second_year', String(data.percentage_second_year ?? 0))
       fd.append('bonus_hours_first_year', String(data.bonus_hours_first_year ?? 0))
@@ -1495,121 +1520,167 @@ const TrainingContractGeneralTab: React.FC<Props> = ({ open, mode, trainingContr
 
           <Grid item xs={12} md={6} />
 
-          <Grid item xs={12} md={3}>
-            <Controller
-              name='percentage_first_year'
-              control={control}
-              render={({ field }) => (
-                <CustomTextField
-                  fullWidth
-                  type='number'
-                  label={t('Percentage 1st year')}
-                  {...field}
-                  disabled={disabledAll || firstYearLocked}
+          <Grid item xs={12}>
+            <Grid container spacing={4} columns={{ xs: 1, md: 5 }}>
+              <Grid item xs={1}>
+                <Controller
+                  name='hours_first_year'
+                  control={control}
+                  render={({ field }) => (
+                    <CustomTextField
+                      fullWidth
+                      type='number'
+                      label='Horas 1er año'
+                      {...field}
+                      inputProps={{ min: 0, step: '0.01' }}
+                      disabled={disabledAll || firstYearLocked}
+                      error={Boolean(errors.hours_first_year)}
+                      helperText={errors.hours_first_year?.message}
+                    />
+                  )}
                 />
-              )}
-            />
-          </Grid>
-          <Grid item xs={12} md={3}>
-            <Controller
-              name='bonus_hours_first_year'
-              control={control}
-              render={({ field }) => (
-                <CustomTextField
-                  fullWidth
-                  type='number'
-                  label={t('Bonus hours 1st year')}
-                  {...field}
-                  disabled
-                  helperText={firstYearLocked ? 'Primer año finalizado' : undefined}
+              </Grid>
+              <Grid item xs={1}>
+                <Controller
+                  name='percentage_first_year'
+                  control={control}
+                  render={({ field }) => (
+                    <CustomTextField
+                      fullWidth
+                      type='number'
+                      label={t('Percentage 1st year')}
+                      {...field}
+                      disabled={disabledAll || firstYearLocked}
+                    />
+                  )}
                 />
-              )}
-            />
-          </Grid>
-          <Grid item xs={12} md={3}>
-            <Controller
-              name='formative_hours_first_year'
-              control={control}
-              render={({ field }) => (
-                <CustomTextField
-                  fullWidth
-                  type='number'
-                  label={t('Real training hours 1st year')}
-                  {...field}
-                  disabled={disabledAll || firstYearLocked}
+              </Grid>
+              <Grid item xs={1}>
+                <Controller
+                  name='bonus_hours_first_year'
+                  control={control}
+                  render={({ field }) => (
+                    <CustomTextField
+                      fullWidth
+                      type='number'
+                      label={t('Bonus hours 1st year')}
+                      {...field}
+                      disabled
+                      helperText={firstYearLocked ? 'Primer año finalizado' : undefined}
+                    />
+                  )}
                 />
-              )}
-            />
-          </Grid>
-          <Grid item xs={12} md={3}>
-            <Controller
-              name='daily_hours_1'
-              control={control}
-              render={({ field }) => (
-                <CustomTextField
-                  fullWidth
-                  type='number'
-                  label={t('Daily hours 1st year')}
-                  {...field}
-                  disabled={disabledAll || firstYearLocked}
+              </Grid>
+              <Grid item xs={1}>
+                <Controller
+                  name='formative_hours_first_year'
+                  control={control}
+                  render={({ field }) => (
+                    <CustomTextField
+                      fullWidth
+                      type='number'
+                      label={t('Real training hours 1st year')}
+                      {...field}
+                      disabled={disabledAll || firstYearLocked}
+                    />
+                  )}
                 />
-              )}
-            />
+              </Grid>
+              <Grid item xs={1}>
+                <Controller
+                  name='daily_hours_1'
+                  control={control}
+                  render={({ field }) => (
+                    <CustomTextField
+                      fullWidth
+                      type='number'
+                      label={t('Daily hours 1st year')}
+                      {...field}
+                      disabled={disabledAll || firstYearLocked}
+                    />
+                  )}
+                />
+              </Grid>
+
+            </Grid>
           </Grid>
 
-          <Grid item xs={12} md={3}>
-            <Controller
-              name='percentage_second_year'
-              control={control}
-              render={({ field }) => (
-                <CustomTextField
-                  fullWidth
-                  type='number'
-                  label={t('Percentage 2nd year')}
-                  {...field}
-                  disabled={disabledAll}
+          <Grid item xs={12}>
+            <Grid container spacing={4} columns={{ xs: 1, md: 5 }}>
+              <Grid item xs={1}>
+                <Controller
+                  name='hours_second_year'
+                  control={control}
+                  render={({ field }) => (
+                    <CustomTextField
+                      fullWidth
+                      type='number'
+                      label='Horas 2º año'
+                      {...field}
+                      inputProps={{ min: 0, step: '0.01' }}
+                      disabled={disabledAll}
+                      error={Boolean(errors.hours_second_year)}
+                      helperText={errors.hours_second_year?.message}
+                    />
+                  )}
                 />
-              )}
-            />
-          </Grid>
-          <Grid item xs={12} md={3}>
-            <Controller
-              name='bonus_hours_second_year'
-              control={control}
-              render={({ field }) => (
-                <CustomTextField fullWidth type='number' label={t('Bonus hours 2nd year')} {...field} disabled />
-              )}
-            />
-          </Grid>
-          <Grid item xs={12} md={3}>
-            <Controller
-              name='formative_hours_second_year'
-              control={control}
-              render={({ field }) => (
-                <CustomTextField
-                  fullWidth
-                  type='number'
-                  label={t('Real training hours 2nd year')}
-                  {...field}
-                  disabled={disabledAll}
+              </Grid>
+              <Grid item xs={1}>
+                <Controller
+                  name='percentage_second_year'
+                  control={control}
+                  render={({ field }) => (
+                    <CustomTextField
+                      fullWidth
+                      type='number'
+                      label={t('Percentage 2nd year')}
+                      {...field}
+                      disabled={disabledAll}
+                    />
+                  )}
                 />
-              )}
-            />
-          </Grid>
-          <Grid item xs={12} md={3}>
-            <Controller
-              name='daily_hours_2'
-              control={control}
-              render={({ field }) => (
-                <CustomTextField
-                  fullWidth
-                  type='number'
-                  label={t('Daily hours 2nd year')}
-                  {...field}
-                  disabled={disabledAll}
+              </Grid>
+              <Grid item xs={1}>
+                <Controller
+                  name='bonus_hours_second_year'
+                  control={control}
+                  render={({ field }) => (
+                    <CustomTextField fullWidth type='number' label={t('Bonus hours 2nd year')} {...field} disabled />
+                  )}
                 />
-              )}
-            />
+              </Grid>
+              <Grid item xs={1}>
+                <Controller
+                  name='formative_hours_second_year'
+                  control={control}
+                  render={({ field }) => (
+                    <CustomTextField
+                      fullWidth
+                      type='number'
+                      label={t('Real training hours 2nd year')}
+                      {...field}
+                      disabled={disabledAll}
+                    />
+                  )}
+                />
+              </Grid>
+              <Grid item xs={1}>
+                <Controller
+                  name='daily_hours_2'
+                  control={control}
+                  render={({ field }) => (
+                    <CustomTextField
+                      fullWidth
+                      type='number'
+                      label={t('Daily hours 2nd year')}
+                      {...field}
+                      disabled={disabledAll}
+                    />
+                  )}
+                />
+              </Grid>
+
+            </Grid>
           </Grid>
 
           <Grid item xs={12} md={3}>

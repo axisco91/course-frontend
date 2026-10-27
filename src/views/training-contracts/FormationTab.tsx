@@ -292,8 +292,8 @@ const TrainingContractFormationTab: React.FC<{ open: boolean }> = ({ open }) => 
 
   // bonificables
   const bonificables = useMemo(() => {
-    return safeNum(selectedContract?.bonus_hours_first_year) + safeNum(selectedContract?.bonus_hours_second_year)
-  }, [selectedContract?.bonus_hours_first_year, selectedContract?.bonus_hours_second_year])
+    return (selectedContract?.external_second_year ? 0 : safeNum(selectedContract?.bonus_hours_first_year)) + safeNum(selectedContract?.bonus_hours_second_year)
+  }, [selectedContract?.external_second_year, selectedContract?.bonus_hours_first_year, selectedContract?.bonus_hours_second_year])
 
   const diff = useMemo(
     () => safeNum(plannedItineraryHours) - safeNum(bonificables),
@@ -319,7 +319,7 @@ const TrainingContractFormationTab: React.FC<{ open: boolean }> = ({ open }) => 
         return
       }
 
-      const data = response.data ?? {}
+      const data = response.data?.data ?? response.data ?? {}
 
       if (data.compacted_courses > 0) {
         toast.success(

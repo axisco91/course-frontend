@@ -345,6 +345,12 @@ export const calculateEndDates = (id, dailyHours1, dailyHours2, data) =>
 export const getTrainingContractActions = id => authInstance.get(`training-contracts/training-actions/${id}`)
 export const createTrainingContractRenewal = (id, data) =>
   authInstance.post(`/training-contracts/${id}/renewal`, data)
+export const getTrainingContractPreviousCandidates = id =>
+  authInstance.get(`/training-contracts/${id}/previous-candidates`)
+export const linkTrainingContractPrevious = (id, previousId) =>
+  authInstance.post(`/training-contracts/${id}/link-previous`, { previous_training_contract_id: previousId })
+export const unlinkTrainingContractPrevious = (id, previousId) =>
+  authInstance.post(`/training-contracts/${id}/unlink-previous`, { previous_training_contract_id: previousId, confirmed: true })
 
 export const getTrainingContractElements = () => authInstance.get(`/training-contract-elements`)
 export const getTrainingContractElementsWithId = (id, data) =>

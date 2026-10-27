@@ -2,7 +2,7 @@
 
 import Autocomplete from 'src/views/components/GuardedAutocomplete'
 import React, { Fragment, useCallback, useContext, useEffect, useMemo, useRef, useState, forwardRef } from 'react'
-import { Box, Button, Checkbox, FormControlLabel, Grid, IconButton, InputAdornment, Tooltip, Typography } from '@mui/material'
+import { Box, Button, Checkbox, Dialog, DialogTitle, DialogContent, DialogActions, FormControlLabel, Grid, IconButton, InputAdornment, Tooltip, Typography } from '@mui/material'
 import Icon from 'src/@core/components/icon'
 import CustomTextField from 'src/@core/components/mui/text-field'
 
@@ -18,6 +18,7 @@ import { RootState } from 'src/reducers/types/types'
 import { useErrorHandler } from 'src/hooks/useErrorHandler'
 import { AuthContext } from 'src/context/AuthContext'
 import SavingDialog from '../components/SavingDialog'
+import LinkPreviousContractDialog from './LinkPreviousContractDialog'
 import { generalActions } from 'src/reducers/general/GeneralReducer'
 import DatePickerWrapper from 'src/@core/styles/libs/react-datepicker'
 
@@ -29,6 +30,7 @@ import {
   getTrainingContract,
   getTrainingContractElementsWithId
 } from 'src/api/api'
+import { unlinkTrainingContractPrevious } from 'src/api/api'
 
 // ✅ reducers
 import { studentActions } from 'src/reducers/students/StudentReducer'
@@ -45,6 +47,7 @@ type Mode = 'view' | 'edit' | 'create'
 type List = { id: number; name: string; label?: string }
 
 type FormValues = {
+  external_second_year: boolean
   number_cfa: string
   company: List | null
   student_id: number | null
@@ -113,6 +116,7 @@ const datePickerLocale = (lng: string) => (lng?.startsWith('es') ? es : enUS)
 
 const schema = (t: (k: string) => string) =>
   yup.object().shape({
+    external_second_year: yup.boolean().default(false),
     hours_first_year: yup
       .number()
       .transform((value, original) => original === '' ? null : value)
@@ -167,6 +171,20 @@ const schema = (t: (k: string) => string) =>
 
         return !trainingEnd.isBefore(trainingStart, 'day')
       })
+  }).test('external-period', 'Revisa las fechas del segundo año externo.', function (values) {
+    if (!values?.external_second_year || !values.beginning) return true
+    const start = dayjs(values.beginning)
+    const maximum = start.add(1, 'year').subtract(1, 'day')
+    const end = values.end ? dayjs(values.end) : null
+    const formationStart = values.beginning_formation ? dayjs(values.beginning_formation) : null
+    const formationEnd = values.end_formation ? dayjs(values.end_formation) : null
+    if (!start.isValid() || !end?.isValid() || end.isBefore(start, 'day') || end.isAfter(maximum, 'day') ||
+        !formationStart?.isValid() || formationStart.isBefore(start, 'day') || formationStart.isAfter(end, 'day') ||
+        (formationEnd && (!formationEnd.isValid() || formationEnd.isBefore(formationStart, 'day') || formationEnd.isAfter(end, 'day')))) {
+      return this.createError({ path: 'external_second_year', message: 'El segundo año externo debe estar dentro del contrato actual y no superar un año desde su inicio.' })
+    }
+
+    return true
   })
 
 interface Props {
@@ -281,12 +299,14 @@ const TrainingContractGeneralTab: React.FC<Props> = ({ open, mode, trainingContr
 
   const [loadedContractId, setLoadedContractId] = useState<number | null>(null)
   const [loadedContractData, setLoadedContractData] = useState<any | null>(null)
+  const [linkDialogOpen, setLinkDialogOpen] = useState(false)
+  const [unlinkDialogOpen, setUnlinkDialogOpen] = useState(false)
+  const [unlinking, setUnlinking] = useState(false)
   const [studentFallback, setStudentFallback] = useState<List | null>(null)
   const skipCompanySyncRef = useRef(false)
   const submitInFlightRef = useRef(false)
 
   const disabledAll = readOnly || loading || saving
-  const firstYearLocked = Boolean(loadedContractData?.is_second_year_contract)
 
   const getStudentFullName = (st: any) => {
     const first = String(st?.name ?? st?.first_name ?? st?.student_name ?? '')
@@ -319,6 +339,7 @@ const TrainingContractGeneralTab: React.FC<Props> = ({ open, mode, trainingContr
 
   const defaultValues = useMemo<FormValues>(
     () => ({
+      external_second_year: false,
       number_cfa: String(contractNumber ?? ''),
       company: null,
       student_id: null,
@@ -391,11 +412,16 @@ const TrainingContractGeneralTab: React.FC<Props> = ({ open, mode, trainingContr
     handleSubmit,
     setValue,
     watch,
+    getFieldState,
     formState: { errors, isDirty }
   } = useForm<FormValues>({
     defaultValues,
     resolver: yupResolver(schema(t))
   })
+
+  const externalSecondYear = watch('external_second_year')
+  const internalChain = Boolean(loadedContractData?.original_training_contract_id || loadedContractData?.previous_training_contract_id || loadedContractData?.next_contract_id || Number(loadedContractData?.extension_sequence ?? 0) > 0)
+  const firstYearLocked = externalSecondYear || Boolean(loadedContractData?.original_training_contract_id && loadedContractData?.is_second_year_contract)
 
   const pick = useCallback(
     (list: List[], id: any) => (id != null ? list.find(x => Number(x.id) === Number(id)) ?? null : null),
@@ -519,6 +545,12 @@ const TrainingContractGeneralTab: React.FC<Props> = ({ open, mode, trainingContr
     const calculate = (year: 'first' | 'second', base: number | string, percentage: number | string) => {
       if (year === 'first' && firstYearLocked) return
       const hasBase = base !== '' && base != null
+      const inputChanged = getFieldState(`hours_${year}_year`).isDirty || getFieldState(`percentage_${year}_year`).isDirty || (!hasBase && getFieldState('annually_day_hours').isDirty)
+      if (!inputChanged) {
+        if (loadedContractData) setValue(`bonus_hours_${year}_year`, loadedContractData[`bonus_hours_${year}_year`] ?? 0, { shouldDirty: false })
+
+        return
+      }
       const baseValue = Number(String(hasBase ? base : annually).replace(',', '.') || 0)
       const percent = Number(String(percentage).replace(',', '.') || 0)
       if (!Number.isFinite(baseValue) || !Number.isFinite(percent) || baseValue < 0) return
@@ -536,7 +568,7 @@ const TrainingContractGeneralTab: React.FC<Props> = ({ open, mode, trainingContr
     }
     calculate('first', hours1, p1)
     calculate('second', hours2, p2)
-  }, [open, readOnly, annually, hours1, hours2, p1, p2, setValue, firstYearLocked, loadedContractData])
+  }, [open, readOnly, annually, hours1, hours2, p1, p2, setValue, getFieldState, firstYearLocked, loadedContractData])
 
   // ✅✅ Load Contract (General) + set id in redux + preload elements/planned (optional)
   useEffect(() => {
@@ -648,6 +680,7 @@ const TrainingContractGeneralTab: React.FC<Props> = ({ open, mode, trainingContr
 
     reset({
       ...defaultValues,
+      external_second_year: Boolean(sc.external_second_year),
       number_cfa: String(sc.number_cfa ?? contractNumber ?? ''),
       company: pickWithFallback(companiesList, sc.company_id, sc.company_name, sc.company?.name, sc.company),
       student_id: sc.student_id != null ? Number(sc.student_id) : null,
@@ -833,6 +866,7 @@ const TrainingContractGeneralTab: React.FC<Props> = ({ open, mode, trainingContr
       const fd = new FormData()
 
       fd.append('number_cfa', data.number_cfa ?? '')
+      fd.append('external_second_year', data.external_second_year ? '1' : '0')
       fd.append('company_id', data.company?.id != null ? String(data.company.id) : '')
       fd.append('student_id', data.student_id != null ? String(data.student_id) : '')
 
@@ -921,6 +955,12 @@ const TrainingContractGeneralTab: React.FC<Props> = ({ open, mode, trainingContr
         dispatch(generalActions.addFilterButtonClickCount())
       } else if (mode === 'edit' && trainingContractId) {
         const res = await editTrainingContract(trainingContractId, fd)
+        const saved = res?.data?.data?.training_contract
+        if (!res?.data?.success || !saved) throw new Error(res?.data?.message ?? 'No se pudo guardar el contrato.')
+        reset({ ...data, external_second_year: Boolean(saved.external_second_year) })
+        setLoadedContractData(saved)
+        dispatch(trainingContractActions.setTrainingContract(saved))
+        onLoaded?.(saved)
         toast.success(res.data?.message ?? t('Saved'))
         dispatch(generalActions.addFilterButtonClickCount())
       }
@@ -938,6 +978,43 @@ const TrainingContractGeneralTab: React.FC<Props> = ({ open, mode, trainingContr
         <form onSubmit={handleSubmit(onSubmit)}>
         <Box sx={{ mb: 6 }}>
           <Typography variant='h6'>{t('Training contract information')}</Typography>
+          <Dialog open={unlinkDialogOpen} onClose={() => !unlinking && setUnlinkDialogOpen(false)} maxWidth='sm' fullWidth>
+            <DialogTitle>Desvincular del contrato anterior</DialogTitle>
+            <DialogContent>
+              Este contrato dejará de ser una prórroga del contrato #{loadedContractData?.previous_training_contract_id} y quedará independiente.
+              Se conservarán sus cursos, documentos, horas y fechas. No se recalculará el itinerario.
+            </DialogContent>
+            <DialogActions>
+              <Button disabled={unlinking} onClick={() => setUnlinkDialogOpen(false)}>Cancelar</Button>
+              <Button color='warning' variant='contained' disabled={unlinking} onClick={async () => {
+                if (!trainingContractId || unlinking) return
+                setUnlinking(true)
+                try {
+                  const response = await unlinkTrainingContractPrevious(trainingContractId, loadedContractData.previous_training_contract_id)
+                  const contract = response.data.data.training_contract
+                  setLoadedContractData(contract)
+                  dispatch(trainingContractActions.setTrainingContract(contract))
+                  onLoaded?.(contract)
+                  setUnlinkDialogOpen(false)
+                  toast.success('Contrato desvinculado sin recalcular el itinerario.')
+                } catch (error: any) {
+                  toast.error(error?.response?.data?.errors?.previous_training_contract_id?.[0] ?? error?.response?.data?.message ?? 'No se pudo desvincular el contrato.')
+                } finally {
+                  setUnlinking(false)
+                }
+              }}>Confirmar desvinculación</Button>
+            </DialogActions>
+          </Dialog>
+          {trainingContractId && <LinkPreviousContractDialog
+            contractId={trainingContractId}
+            open={linkDialogOpen}
+            onClose={() => setLinkDialogOpen(false)}
+            onLinked={contract => {
+              setLoadedContractData(contract)
+              dispatch(trainingContractActions.setTrainingContract(contract))
+              onLoaded?.(contract)
+            }}
+          />}
         </Box>
 
         <Grid container spacing={5}>
@@ -1306,8 +1383,51 @@ const TrainingContractGeneralTab: React.FC<Props> = ({ open, mode, trainingContr
           </Grid>
         </Grid>
 
+        <Box sx={{ mt: 6, display: 'flex', gap: 3, flexWrap: 'wrap', alignItems: 'center', '&:empty': { display: 'none' } }}>
+          {mode !== 'create' && trainingContractId && loadedContractData &&
+            userPermissions?.includes('edit.training_contracts') &&
+            !loadedContractData.original_training_contract_id && !loadedContractData.previous_training_contract_id &&
+            !externalSecondYear &&
+            !loadedContractData.next_contract_id && Number(loadedContractData.extension_sequence ?? 0) === 0 && (
+              <Button type='button' variant='contained' startIcon={<Icon icon='tabler:link' fontSize={18} />} disabled={loading || saving || isDirty} onClick={() => setLinkDialogOpen(true)}>
+                Vincular con contrato anterior
+              </Button>
+            )}
+          {mode !== 'create' && trainingContractId && loadedContractData?.previous_training_contract_id &&
+            !loadedContractData.next_contract_id && userPermissions?.includes('edit.training_contracts') && (
+              <Button type='button' variant='contained' startIcon={<Icon icon='tabler:unlink' fontSize={18} />} disabled={loading || saving || isDirty || unlinking} onClick={() => setUnlinkDialogOpen(true)}>
+                Desvincular del contrato anterior
+              </Button>
+            )}
+          {isDirty && <Typography variant='caption' display='block'>Guarda los cambios antes de vincular o desvincular contratos.</Typography>}
+        </Box>
+
         <Box sx={{ mb: 6, mt: 10 }}>
           <Typography variant='h6'>{t('Itinerary')}</Typography>
+          <Controller
+            name='external_second_year'
+            control={control}
+            render={({ field }) => <FormControlLabel
+              label='Primer año realizado en otro centro'
+              control={<Checkbox
+                checked={Boolean(field.value)}
+                disabled={disabledAll || internalChain || !userPermissions?.includes('edit.training_contracts')}
+                onChange={(_, checked) => {
+                  if (checked && loadedContractData && ['hours_first_year', 'percentage_first_year', 'bonus_hours_first_year', 'formative_hours_first_year', 'daily_hours_1'].some(key =>
+                    safeNum(watch(key as keyof FormValues)) !== safeNum(loadedContractData[key]))) {
+                    toast.error('Guarda o descarta los cambios del primer año antes de marcarlo como histórico.')
+
+                    return
+                  }
+                  field.onChange(checked)
+                }}
+              />}
+            />}
+          />
+          {externalSecondYear && <Typography variant='body2' sx={{ mb: 3 }}>
+            El primer año se conserva como histórico. El itinerario utilizará las horas del segundo año. Guarda los cambios y pulsa «Calcular itinerario» para recalcular.
+          </Typography>}
+          {errors.external_second_year && <Typography color='error'>{errors.external_second_year.message}</Typography>}
         </Box>
 
         <Grid container spacing={5}>
@@ -1566,7 +1686,7 @@ const TrainingContractGeneralTab: React.FC<Props> = ({ open, mode, trainingContr
                       label={t('Bonus hours 1st year')}
                       {...field}
                       disabled
-                      helperText={firstYearLocked ? 'Primer año finalizado' : undefined}
+                      helperText={externalSecondYear ? 'Histórico de otro centro; excluido de este itinerario' : firstYearLocked ? 'Primer año finalizado' : undefined}
                     />
                   )}
                 />
